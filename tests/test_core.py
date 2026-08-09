@@ -101,7 +101,6 @@ def test_exports_are_non_empty():
         probabilities={label: (0.91 if label == "ripe" else 0.03) for label in CLASS_NAMES},
         algorithm="Test model",
         processing_time_ms=12.5,
-        brown_spot_ratio=0.04,
     )
     assert b"banana.jpg" in records_csv([record])
     assert records_pdf([record]).startswith(b"%PDF")

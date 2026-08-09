@@ -6,7 +6,7 @@ from typing import Any, Iterable
 
 import numpy as np
 
-from src.preprocessing import banana_mask, brown_spot_ratio, colour_masks
+from src.preprocessing import banana_mask, colour_masks
 from src.types import PredictionRecord
 
 
@@ -55,8 +55,6 @@ class BaseBananaPipeline(ABC):
         started = perf_counter()
         probabilities = self.predict_proba(image)
         predicted = max(probabilities, key=probabilities.get)
-        mask = banana_mask(image, self.image_size)
-        ratio = brown_spot_ratio(image, mask=mask, size=self.image_size)
         elapsed_ms = (perf_counter() - started) * 1000
         return PredictionRecord(
             filename=filename,
@@ -65,7 +63,6 @@ class BaseBananaPipeline(ABC):
             probabilities=probabilities,
             algorithm=self.display_name,
             processing_time_ms=elapsed_ms,
-            brown_spot_ratio=ratio,
             explanation=self.explain(image),
         )
 
@@ -78,7 +75,6 @@ class BaseBananaPipeline(ABC):
             "brown_mask": np.bitwise_or(masks["brown"], masks["dark"]),
             "green_ratio": float(np.count_nonzero(masks["green"])) / fruit_pixels,
             "yellow_ratio": float(np.count_nonzero(masks["yellow"])) / fruit_pixels,
-            "brown_spot_ratio": brown_spot_ratio(image, mask=mask, size=self.image_size),
         }
 
     def parameters(self) -> dict[str, Any]:

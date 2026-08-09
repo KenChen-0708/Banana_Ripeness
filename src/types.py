@@ -12,7 +12,6 @@ class PredictionRecord:
     probabilities: dict[str, float]
     algorithm: str
     processing_time_ms: float
-    brown_spot_ratio: float
     explanation: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self, include_explanation: bool = False) -> dict[str, Any]:

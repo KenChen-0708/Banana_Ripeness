@@ -37,13 +37,12 @@ def records_pdf(records: Iterable[PredictionRecord], title: str = "Banana Ripene
     if frame.empty:
         story.append(Paragraph("No prediction records were supplied.", styles["BodyText"]))
     else:
-        columns = ["filename", "algorithm", "predicted_class", "confidence", "brown_spot_ratio", "processing_time_ms"]
+        columns = ["filename", "algorithm", "predicted_class", "confidence", "processing_time_ms"]
         display = frame[columns].copy()
-        for column in ("confidence", "brown_spot_ratio"):
-            display[column] = display[column].map(lambda value: f"{float(value):.2%}")
+        display["confidence"] = display["confidence"].map(lambda value: f"{float(value):.2%}")
         display["processing_time_ms"] = display["processing_time_ms"].map(lambda value: f"{float(value):.1f}")
         data = [list(display.columns)] + display.astype(str).values.tolist()
-        table = Table(data, repeatRows=1, colWidths=[52 * mm, 62 * mm, 30 * mm, 25 * mm, 30 * mm, 30 * mm])
+        table = Table(data, repeatRows=1, colWidths=[60 * mm, 70 * mm, 35 * mm, 30 * mm, 34 * mm])
         table.setStyle(
             TableStyle(
                 [

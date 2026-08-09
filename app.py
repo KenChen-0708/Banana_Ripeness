@@ -35,10 +35,10 @@ def model_state():
 
 def prediction_table(records):
     frame = records_dataframe(records)
-    columns = ["algorithm", "predicted_class", "confidence", "brown_spot_ratio", "processing_time_ms"]
+    columns = ["algorithm", "predicted_class", "confidence", "processing_time_ms"]
     st.dataframe(
         frame[columns].style.format(
-            {"confidence": "{:.1%}", "brown_spot_ratio": "{:.1%}", "processing_time_ms": "{:.1f}"}
+            {"confidence": "{:.1%}", "processing_time_ms": "{:.1f}"}
         ),
         use_container_width=True,
         hide_index=True,
@@ -52,7 +52,7 @@ def render_visual_explanation(image, record):
     centre.image(explanation["fruit_mask"], caption="Detected banana foreground", clamp=True, use_container_width=True)
     right.image(
         mask_overlay(image, explanation["brown_mask"]),
-        caption=f"Brown/dark surface regions ({record.brown_spot_ratio:.1%})",
+        caption="Brown/dark surface regions",
         use_container_width=True,
     )
 
@@ -110,7 +110,7 @@ def batch_page(models, recommended_key):
     first, second, third = st.columns(3)
     first.metric("Images assessed", len(records))
     second.metric("Average confidence", f"{frame['confidence'].mean():.1%}")
-    third.metric("Average blemish ratio", f"{frame['brown_spot_ratio'].mean():.1%}")
+    third.metric("Average processing time", f"{frame['processing_time_ms'].mean():.1f} ms")
     st.bar_chart(frame["predicted_class"].value_counts().reindex(CLASS_NAMES, fill_value=0))
     prediction_table(records)
     low_confidence = frame[frame["confidence"] < 0.60]
@@ -155,22 +155,6 @@ def evaluation_page(summary):
     st.dataframe(report.style.format("{:.3f}"), use_container_width=True)
 
 
-def about_page():
-    st.header("System flow and interpretation")
-    st.markdown(
-        """
-        1. The uploaded image is validated, orientation-corrected, and converted to RGB.
-        2. A reproducible foreground mask separates the banana from most background pixels.
-        3. Each pipeline extracts its own colour, cluster, histogram, or texture features.
-        4. Four supervised classifiers independently predict the ripeness class.
-        5. The dashboard compares the outputs and highlights the model with the highest held-out macro-F1.
-        6. Brown and dark pixels are quantified relative to the detected banana surface.
-
-        The result is decision support, not a food-safety guarantee. Low-confidence images and unusual acquisition conditions should be reviewed manually.
-        """
-    )
-
-
 def main():
     st.title("🍌 Banana Ripeness & Surface Quality Assessment")
     st.caption("Classical image processing • four-model comparison • reproducible evaluation")
@@ -184,7 +168,7 @@ def main():
     recommended_key = summary.get("recommended_pipeline") if summary else next(iter(models))
     if recommended_key not in models:
         recommended_key = next(iter(models))
-    page = st.sidebar.radio("Navigation", ["Single image", "Batch assessment", "Model evaluation", "System flow"])
+    page = st.sidebar.radio("Navigation", ["Single image", "Batch assessment", "Model evaluation"])
     st.sidebar.success(f"Recommended model: {models[recommended_key][0].display_name}")
     if page == "Single image":
         single_page(models, recommended_key)
@@ -192,8 +176,6 @@ def main():
         batch_page(models, recommended_key)
     elif page == "Model evaluation":
         evaluation_page(summary)
-    else:
-        about_page()
 
 
 if __name__ == "__main__":

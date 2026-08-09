@@ -338,7 +338,7 @@ def create_sample_output(models, path: Path) -> tuple[Path, list]:
     axes[1].imshow(winner.explanation["fruit_mask"], cmap="gray")
     axes[1].set_title("Banana foreground")
     axes[2].imshow(mask_overlay(standard, winner.explanation["brown_mask"]))
-    axes[2].set_title(f"Blemish overlay: {winner.brown_spot_ratio:.1%}")
+    axes[2].set_title("Blemish overlay")
     for axis in axes:
         axis.axis("off")
     table_axis = fig.add_subplot(grid[1, :])
@@ -515,7 +515,7 @@ def insert_report_content(doc: Document, reference, summary: dict, assets: dict,
     add_paragraph_before(
         doc,
         reference,
-        f"Figure 4.3 was generated from the held-out file {sample_path.name}. The recommended model predicted {winner_record['predicted_class']} with {winner_record['confidence']:.1%} confidence and reported a {winner_record['brown_spot_ratio']:.1%} brown/dark surface ratio. The Streamlit prototype supports the same processing for single images and batches, displays model comparisons and class distributions, warns below 60% confidence, and exports CSV or PDF summaries.",
+        f"Figure 4.3 was generated from the held-out file {sample_path.name}. The recommended model predicted {winner_record['predicted_class']} with {winner_record['confidence']:.1%} confidence. The Streamlit prototype supports the same processing for single images and batches, displays model comparisons and class distributions, warns below 60% confidence, and exports CSV or PDF summaries.",
     )
 
     page_break = add_paragraph_before(doc, reference)
