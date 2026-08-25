@@ -67,14 +67,22 @@ class BaseBananaPipeline(ABC):
         )
 
     def explain(self, image: np.ndarray) -> dict[str, Any]:
+        from src.preprocessing import calibrate_fruit_geometry, determine_quality_grade
+
         mask = banana_mask(image, self.image_size)
         masks = colour_masks(image, mask=mask, size=self.image_size)
         fruit_pixels = max(1, np.count_nonzero(mask))
+        brown_mask = np.bitwise_or(masks["brown"], masks["dark"])
+        blemish_ratio = float(np.count_nonzero(brown_mask)) / fruit_pixels
+        geometry = calibrate_fruit_geometry(image, mask=mask, size=self.image_size)
         return {
             "fruit_mask": mask,
-            "brown_mask": np.bitwise_or(masks["brown"], masks["dark"]),
+            "brown_mask": brown_mask,
             "green_ratio": float(np.count_nonzero(masks["green"])) / fruit_pixels,
             "yellow_ratio": float(np.count_nonzero(masks["yellow"])) / fruit_pixels,
+            "blemish_ratio": blemish_ratio,
+            "geometry": geometry,
+            "quality_grade": determine_quality_grade("ripe", blemish_ratio),
         }
 
     def parameters(self) -> dict[str, Any]:
