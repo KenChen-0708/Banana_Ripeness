@@ -97,12 +97,20 @@ def records_pdf(records: Iterable[PredictionRecord], title: str = "Banana Ripene
                 Spacer(1, 2 * mm),
             ]
         )
-        columns = ["filename", "algorithm", "predicted_class", "confidence", "processing_time_ms"]
+        columns = [
+            "filename", "algorithm", "predicted_class", "confidence",
+            "blemish_ratio", "fruit_area_ratio", "processing_time_ms",
+        ]
+        for optional_column in ("blemish_ratio", "fruit_area_ratio"):
+            if optional_column not in frame:
+                frame[optional_column] = 0.0
         display = frame[columns].copy()
         display["confidence"] = display["confidence"].map(lambda value: f"{float(value):.2%}")
+        display["blemish_ratio"] = display["blemish_ratio"].map(lambda value: f"{float(value):.2%}")
+        display["fruit_area_ratio"] = display["fruit_area_ratio"].map(lambda value: f"{float(value):.2%}")
         display["processing_time_ms"] = display["processing_time_ms"].map(lambda value: f"{float(value):.1f}")
         data = [list(display.columns)] + display.astype(str).values.tolist()
-        table = Table(data, repeatRows=1, colWidths=[60 * mm, 70 * mm, 35 * mm, 30 * mm, 34 * mm])
+        table = Table(data, repeatRows=1, colWidths=[43 * mm, 57 * mm, 28 * mm, 25 * mm, 27 * mm, 27 * mm, 28 * mm])
         table.setStyle(_table_style(header_colour="#24543A", font_size=8))
         story.append(table)
     document.build(story)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import cv2
 import numpy as np
-from skimage.feature import graycomatrix, graycoprops
+from skimage.feature import graycoprops
 from sklearn.ensemble import RandomForestClassifier
 
 from src.constants import RANDOM_STATE
@@ -14,7 +14,7 @@ from .base import BaseBananaPipeline
 class GLCMMorphologyRandomForestPipeline(BaseBananaPipeline):
     key = "glcm_rf"
     display_name = "Morphology + GLCM + Random Forest"
-    feature_version = "glcm-morphology-v1"
+    feature_version = "glcm-morphology-masked-v2"
     image_size = (128, 128)
 
     def extract_features(self, image: np.ndarray) -> np.ndarray:
@@ -25,15 +25,10 @@ class GLCMMorphologyRandomForestPipeline(BaseBananaPipeline):
         refined = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
         refined = cv2.morphologyEx(refined, cv2.MORPH_OPEN, kernel, iterations=1)
 
-        masked_gray = np.where(refined > 0, gray, 0).astype(np.uint8)
-        quantised = (masked_gray // 16).astype(np.uint8)
-        matrix = graycomatrix(
-            quantised,
-            distances=[1, 2, 4],
-            angles=[0, np.pi / 4, np.pi / 2, 3 * np.pi / 4],
-            levels=16,
-            symmetric=True,
-            normed=True,
+        quantised = (gray // 16).astype(np.uint8)
+        matrix = _masked_graycomatrix(
+            quantised, refined > 0, distances=(1, 2, 4),
+            angles=(0, np.pi / 4, np.pi / 2, 3 * np.pi / 4), levels=16,
         )
         texture: list[float] = []
         for prop in ("contrast", "correlation", "energy", "homogeneity"):
@@ -70,4 +65,33 @@ class GLCMMorphologyRandomForestPipeline(BaseBananaPipeline):
             n_jobs=-1,
             class_weight="balanced",
         )
+
+
+def _masked_graycomatrix(
+    image: np.ndarray,
+    mask: np.ndarray,
+    distances: tuple[int, ...],
+    angles: tuple[float, ...],
+    levels: int,
+) -> np.ndarray:
+    """Build symmetric normalised GLCMs using only fruit-to-fruit pixel pairs."""
+    height, width = image.shape
+    result = np.zeros((levels, levels, len(distances), len(angles)), dtype=np.float64)
+    for distance_index, distance in enumerate(distances):
+        for angle_index, angle in enumerate(angles):
+            dx = int(round(np.cos(angle) * distance))
+            dy = int(round(np.sin(angle) * distance))
+            y0, y1 = max(0, -dy), min(height, height - dy)
+            x0, x1 = max(0, -dx), min(width, width - dx)
+            source = image[y0:y1, x0:x1]
+            target = image[y0 + dy : y1 + dy, x0 + dx : x1 + dx]
+            valid = mask[y0:y1, x0:x1] & mask[y0 + dy : y1 + dy, x0 + dx : x1 + dx]
+            if np.any(valid):
+                indices = source[valid].astype(np.int32) * levels + target[valid].astype(np.int32)
+                counts = np.bincount(indices, minlength=levels * levels).reshape(levels, levels)
+                counts = counts + counts.T
+                result[:, :, distance_index, angle_index] = counts / counts.sum()
+            else:
+                result[0, 0, distance_index, angle_index] = 1.0
+    return result
 

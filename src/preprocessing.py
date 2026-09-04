@@ -41,6 +41,22 @@ def resize_rgb(image: np.ndarray, size: tuple[int, int]) -> np.ndarray:
     return cv2.resize(image, (width, height), interpolation=interpolation)
 
 
+def denoise_and_enhance(image: np.ndarray, size: tuple[int, int] | None = None) -> np.ndarray:
+    """Apply median denoising and luminance-only CLAHE contrast enhancement.
+
+    Enhancing only the L* channel avoids inventing colour shifts that could alter
+    the visual ripeness cues. The operation is deterministic and keeps uint8 RGB
+    output for downstream OpenCV routines.
+    """
+    _validate_rgb(image)
+    rgb = resize_rgb(image, size) if size is not None else image.copy()
+    denoised = cv2.medianBlur(rgb, 5)
+    lab = cv2.cvtColor(denoised, cv2.COLOR_RGB2LAB)
+    lightness, a_channel, b_channel = cv2.split(lab)
+    enhanced_lightness = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(lightness)
+    return cv2.cvtColor(cv2.merge((enhanced_lightness, a_channel, b_channel)), cv2.COLOR_LAB2RGB)
+
+
 def _validate_rgb(image: np.ndarray) -> None:
     if not isinstance(image, np.ndarray) or image.ndim != 3 or image.shape[2] != 3:
         raise ImageValidationError("Expected an RGB image with three colour channels.")
@@ -120,4 +136,69 @@ def mask_overlay(image: np.ndarray, mask: np.ndarray, colour: tuple[int, int, in
     overlay = rgb.copy()
     overlay[mask > 0] = colour
     return cv2.addWeighted(rgb, 0.65, overlay, 0.35, 0)
+
+
+def rectify_object(image: np.ndarray, mask: np.ndarray, size: tuple[int, int] = (224, 224)) -> np.ndarray:
+    """Crop the detected fruit and letterbox it without aspect-ratio distortion."""
+    rgb = resize_rgb(image, (mask.shape[1], mask.shape[0]))
+    points = cv2.findNonZero(mask)
+    if points is None:
+        return resize_rgb(rgb, size)
+    x, y, width, height = cv2.boundingRect(points)
+    crop = rgb[y : y + height, x : x + width]
+    target_width, target_height = size
+    scale = min(target_width / max(1, width), target_height / max(1, height))
+    fitted_width = max(1, int(round(width * scale)))
+    fitted_height = max(1, int(round(height * scale)))
+    interpolation = cv2.INTER_AREA if scale < 1 else cv2.INTER_LINEAR
+    fitted = cv2.resize(crop, (fitted_width, fitted_height), interpolation=interpolation)
+    canvas = np.zeros((target_height, target_width, 3), dtype=np.uint8)
+    left = (target_width - fitted_width) // 2
+    top = (target_height - fitted_height) // 2
+    canvas[top : top + fitted_height, left : left + fitted_width] = fitted
+    return canvas
+
+
+def analyse_object(image: np.ndarray, size: tuple[int, int] = (224, 224)) -> dict[str, object]:
+    """Return auditable preprocessing, detection, and surface measurements."""
+    standardised = resize_rgb(image, size)
+    enhanced = denoise_and_enhance(image, size)
+    mask = banana_mask(enhanced, size)
+    masks = colour_masks(enhanced, mask=mask, size=size)
+    blemish = cv2.bitwise_or(masks["brown"], masks["dark"])
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    largest = max(contours, key=cv2.contourArea) if contours else None
+
+    detection = standardised.copy()
+    if largest is None:
+        x = y = 0
+        width, height = size
+        contour_area = perimeter = 0.0
+    else:
+        x, y, width, height = cv2.boundingRect(largest)
+        contour_area = float(cv2.contourArea(largest))
+        perimeter = float(cv2.arcLength(largest, True))
+        cv2.drawContours(detection, [largest], -1, (55, 210, 110), 2)
+        cv2.rectangle(detection, (x, y), (x + width - 1, y + height - 1), (255, 190, 35), 2)
+
+    fruit_pixels = int(np.count_nonzero(mask))
+    total_pixels = int(mask.size)
+    return {
+        "standardised_rgb": standardised,
+        "enhanced_rgb": enhanced,
+        "rectified_rgb": rectify_object(enhanced, mask, size),
+        "fruit_mask": mask,
+        "brown_mask": blemish,
+        "detection_overlay": detection,
+        "bounding_box": (int(x), int(y), int(width), int(height)),
+        "contour_area_px": contour_area,
+        "perimeter_px": perimeter,
+        "fruit_area_px": fruit_pixels,
+        "fruit_area_ratio": fruit_pixels / max(1, total_pixels),
+        "blemish_ratio": float(np.count_nonzero(blemish)) / max(1, fruit_pixels),
+        "green_ratio": float(np.count_nonzero(masks["green"])) / max(1, fruit_pixels),
+        "yellow_ratio": float(np.count_nonzero(masks["yellow"])) / max(1, fruit_pixels),
+        "major_dimension_px": float(max(width, height)),
+        "minor_dimension_px": float(min(width, height)),
+    }
 

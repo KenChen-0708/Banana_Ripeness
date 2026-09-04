@@ -11,7 +11,14 @@ from src.evaluation import evaluate_predictions, rank_results
 from src.exports import records_csv, records_pdf
 from src.model_store import IncompatibleModelError, validate_manifest
 from src.pipelines import create_pipeline
-from src.preprocessing import ImageValidationError, banana_mask, brown_spot_ratio, decode_image
+from src.preprocessing import (
+    ImageValidationError,
+    analyse_object,
+    banana_mask,
+    brown_spot_ratio,
+    decode_image,
+    denoise_and_enhance,
+)
 from src.types import PredictionRecord
 
 
@@ -48,6 +55,18 @@ def test_mask_and_blemish_ratio_bounds(synthetic_banana):
     assert set(np.unique(mask)).issubset({0, 255})
     ratio = brown_spot_ratio(synthetic_banana, mask)
     assert 0.0 <= ratio <= 1.0
+
+
+def test_preprocessing_and_object_analysis_are_auditable(synthetic_banana):
+    enhanced = denoise_and_enhance(synthetic_banana)
+    analysis = analyse_object(synthetic_banana)
+    assert enhanced.shape == synthetic_banana.shape
+    assert enhanced.dtype == np.uint8
+    assert analysis["detection_overlay"].shape == (224, 224, 3)
+    assert analysis["rectified_rgb"].shape == (224, 224, 3)
+    assert 0.0 <= analysis["blemish_ratio"] <= 1.0
+    assert analysis["fruit_area_px"] > 0
+    assert analysis["major_dimension_px"] >= analysis["minor_dimension_px"] > 0
 
 
 def test_decode_rejects_non_image():
