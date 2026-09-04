@@ -138,6 +138,51 @@ def mask_overlay(image: np.ndarray, mask: np.ndarray, colour: tuple[int, int, in
     return cv2.addWeighted(rgb, 0.65, overlay, 0.35, 0)
 
 
+def order_quad_points(points: np.ndarray) -> np.ndarray:
+    """Order four image points as top-left, top-right, bottom-right, bottom-left."""
+    points = np.asarray(points, dtype=np.float32)
+    if points.shape != (4, 2) or not np.all(np.isfinite(points)):
+        raise ImageValidationError("Perspective calibration requires four finite (x, y) points.")
+    ordered = np.empty((4, 2), dtype=np.float32)
+    sums = points.sum(axis=1)
+    differences = np.diff(points, axis=1).ravel()
+    ordered[0] = points[np.argmin(sums)]
+    ordered[2] = points[np.argmax(sums)]
+    ordered[1] = points[np.argmin(differences)]
+    ordered[3] = points[np.argmax(differences)]
+    if abs(float(cv2.contourArea(ordered))) < 4.0:
+        raise ImageValidationError("Perspective calibration points must enclose a visible quadrilateral.")
+    return ordered
+
+
+def rectify_perspective(
+    image: np.ndarray,
+    source_points: np.ndarray,
+    output_size: tuple[int, int] | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Rectify a planar quadrilateral with a reproducible projective homography."""
+    _validate_rgb(image)
+    source = order_quad_points(source_points)
+    top_width = np.linalg.norm(source[1] - source[0])
+    bottom_width = np.linalg.norm(source[2] - source[3])
+    left_height = np.linalg.norm(source[3] - source[0])
+    right_height = np.linalg.norm(source[2] - source[1])
+    if output_size is None:
+        width = max(2, int(round(max(top_width, bottom_width))))
+        height = max(2, int(round(max(left_height, right_height))))
+    else:
+        width, height = output_size
+        if width < 2 or height < 2:
+            raise ImageValidationError("Rectified output dimensions must both be at least two pixels.")
+    destination = np.asarray(
+        [[0, 0], [width - 1, 0], [width - 1, height - 1], [0, height - 1]],
+        dtype=np.float32,
+    )
+    matrix = cv2.getPerspectiveTransform(source, destination)
+    rectified = cv2.warpPerspective(image, matrix, (int(width), int(height)), flags=cv2.INTER_LINEAR)
+    return rectified, matrix
+
+
 def rectify_object(image: np.ndarray, mask: np.ndarray, size: tuple[int, int] = (224, 224)) -> np.ndarray:
     """Crop the detected fruit and letterbox it without aspect-ratio distortion."""
     rgb = resize_rgb(image, (mask.shape[1], mask.shape[0]))

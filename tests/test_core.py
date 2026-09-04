@@ -18,7 +18,10 @@ from src.preprocessing import (
     brown_spot_ratio,
     decode_image,
     denoise_and_enhance,
+    rectify_perspective,
 )
+from src.validation import bounding_box_iou, segmentation_metrics
+from src.robustness import PERTURBATIONS, apply_perturbation
 from src.types import PredictionRecord
 
 
@@ -74,6 +77,27 @@ def test_decode_rejects_non_image():
         decode_image(b"not an image")
 
 
+def test_perspective_rectification_and_validation_metrics(synthetic_banana):
+    points = np.asarray([[20, 20], [290, 30], [280, 210], [30, 220]], dtype=np.float32)
+    rectified, matrix = rectify_perspective(synthetic_banana, points, (200, 100))
+    assert rectified.shape == (100, 200, 3)
+    assert matrix.shape == (3, 3)
+    reference = np.zeros((10, 10), dtype=np.uint8)
+    reference[2:8, 2:8] = 255
+    metrics = segmentation_metrics(reference, reference)
+    assert metrics["iou"] == 1.0
+    assert bounding_box_iou((2, 2, 6, 6), (2, 2, 6, 6)) == 1.0
+
+
+def test_robustness_perturbations_are_bounded_and_deterministic(synthetic_banana):
+    for condition in PERTURBATIONS:
+        first = apply_perturbation(synthetic_banana, condition)
+        second = apply_perturbation(synthetic_banana, condition)
+        assert first.shape == synthetic_banana.shape
+        assert first.dtype == np.uint8
+        assert np.array_equal(first, second)
+
+
 def test_source_leakage_detection():
     splits = {
         "train": [DatasetItem(Path("train/ripe/sample_jpg.rf.abc.jpg"), "ripe", "train")],
@@ -89,12 +113,21 @@ def test_metrics_and_ranking():
     imperfect = evaluate_predictions(truth, ["ripe"] * 4)
     ranked = rank_results(
         [
-            {"pipeline_key": "weak", "test_metrics": imperfect},
-            {"pipeline_key": "strong", "test_metrics": perfect},
+            {"pipeline_key": "weak", "validation_metrics": imperfect, "test_metrics": perfect},
+            {"pipeline_key": "strong", "validation_metrics": perfect, "test_metrics": imperfect},
         ]
     )
     assert perfect["accuracy"] == 1.0
     assert ranked[0]["pipeline_key"] == "strong"
+
+
+def test_probability_metrics_are_reported():
+    truth = np.asarray(CLASS_NAMES)
+    probabilities = np.eye(len(CLASS_NAMES)) * 0.97 + (1 - np.eye(len(CLASS_NAMES))) * 0.01
+    metrics = evaluate_predictions(truth, truth, probabilities, bootstrap_samples=20)
+    assert metrics["multiclass_brier_score"] < 0.01
+    assert metrics["expected_calibration_error"] < 0.05
+    assert len(metrics["accuracy_ci95"]) == 2
 
 
 def test_manifest_validation():

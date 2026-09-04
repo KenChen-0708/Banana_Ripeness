@@ -12,14 +12,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import streamlit as st
-from matplotlib.ticker import PercentFormatter
 
 from src.constants import CLASS_NAMES, DEFAULT_ARTIFACT_DIR
 from src.exports import records_csv, records_dataframe, records_pdf
 from src.model_store import IncompatibleModelError, discover_bundles
 from src.pipelines import PIPELINE_CLASSES
-from src.preprocessing import ImageValidationError, analyse_object, decode_image, mask_overlay, resize_rgb
+from src.preprocessing import ImageValidationError, analyse_object, decode_image, mask_overlay, rectify_perspective, resize_rgb
 from src.video import VideoValidationError, annotate_frame, sample_video
+from src.visualisation import confusion_figure, probability_figure
 
 st.set_page_config(
     page_title="Banana Ripeness Assessment",
@@ -399,38 +399,6 @@ def render_explanation(image: np.ndarray, record, known_length_cm: float | None 
             )
 
 
-def probability_figure(probabilities: dict[str, float], accent: str):
-    """Create a compact bounded chart that cannot overflow a Streamlit column."""
-    labels = [class_name.title() for class_name in CLASS_NAMES]
-    values = [float(probabilities.get(class_name, 0.0)) for class_name in CLASS_NAMES]
-    figure, axis = plt.subplots(figsize=(4.5, 2.75))
-    figure.patch.set_alpha(0)
-    axis.set_facecolor("#0B1718")
-    bars = axis.barh(labels, values, color=accent, height=0.58)
-    axis.invert_yaxis()
-    axis.set_xlim(0, 1)
-    axis.xaxis.set_major_formatter(PercentFormatter(1.0, decimals=0))
-    axis.set_xlabel("Probability", color="#D8E1DC", labelpad=7)
-    axis.tick_params(axis="both", colors="#D8E1DC", labelsize=9, length=0)
-    axis.grid(axis="x", color="#6F817A", alpha=0.28, linewidth=0.8)
-    axis.set_axisbelow(True)
-    for spine in axis.spines.values():
-        spine.set_visible(False)
-    for bar, value in zip(bars, values, strict=True):
-        axis.text(
-            min(value + 0.025, 0.94),
-            bar.get_y() + bar.get_height() / 2,
-            f"{value:.1%}",
-            va="center",
-            ha="left",
-            color="#F4F7F5",
-            fontsize=9,
-            fontweight="bold",
-        )
-    figure.tight_layout(pad=1.1)
-    return figure
-
-
 def render_pipeline_tab(pipeline_name: str, pipeline_records, images: dict[str, np.ndarray], accent: str, known_length_cm: float | None) -> None:
     frame = records_dataframe(pipeline_records)
     metrics = st.columns(4)
@@ -467,6 +435,24 @@ def assessment_page(models, recommended_key: str, show_landing: bool = True) -> 
     with st.expander("Optional physical measurement calibration"):
         st.caption("Enter the known longest dimension of the photographed banana or bunch. The detected major axis is used to derive pixels per centimetre.")
         known_length = st.number_input("Known reference length (cm)", min_value=0.0, max_value=200.0, value=0.0, step=0.5)
+        perspective_enabled = st.checkbox(
+            "Apply planar perspective rectification",
+            help="Use this when the fruit and a rectangular calibration plane are photographed obliquely.",
+        )
+        perspective_points = st.text_input(
+            "Plane corners as normalised coordinates",
+            value="0.02,0.02; 0.98,0.02; 0.98,0.98; 0.02,0.98",
+            help="Four x,y pairs from 0 to 1. Point order is corrected automatically.",
+            disabled=not perspective_enabled,
+        )
+        plane_ratio = st.number_input(
+            "Calibration plane width ÷ height",
+            min_value=0.1,
+            max_value=10.0,
+            value=1.5,
+            step=0.1,
+            disabled=not perspective_enabled,
+        )
     known_length_cm = known_length if known_length > 0 else None
     uploads = st.file_uploader(
         "Upload banana images",
@@ -486,13 +472,29 @@ def assessment_page(models, recommended_key: str, show_landing: bool = True) -> 
                 path = Path(upload.name)
                 display_name = f"{path.stem} ({duplicate}){path.suffix}"
                 duplicate += 1
-            images[display_name] = decode_image(upload.getvalue())
+            image = decode_image(upload.getvalue())
+            if perspective_enabled:
+                try:
+                    pairs = [tuple(float(value) for value in pair.split(",")) for pair in perspective_points.split(";")]
+                except ValueError as exc:
+                    raise ImageValidationError("Calibration coordinates must contain numbers separated by commas and semicolons.") from exc
+                if len(pairs) != 4 or any(len(pair) != 2 for pair in pairs):
+                    raise ImageValidationError("Enter exactly four calibration-plane corner pairs.")
+                normalised = np.asarray(pairs, dtype=np.float32)
+                if np.any(normalised < 0) or np.any(normalised > 1):
+                    raise ImageValidationError("Normalised calibration coordinates must be between 0 and 1.")
+                pixels = normalised * np.asarray([image.shape[1] - 1, image.shape[0] - 1], dtype=np.float32)
+                output_height = 600
+                image, _ = rectify_perspective(image, pixels, (int(round(output_height * plane_ratio)), output_height))
+            images[display_name] = image
         except ImageValidationError as exc:
             errors.append(f"{upload.name}: {exc}")
     if errors:
         st.warning("Some files were skipped:\n\n" + "\n\n".join(errors))
     if not images:
         return
+    if perspective_enabled:
+        st.success("Planar homography applied before segmentation and classification. The displayed evidence uses the rectified coordinate system.")
     all_records, completed = [], 0
     total = len(images) * len(models)
     progress = st.progress(0, text="Running all image-processing pipelines...")
@@ -512,30 +514,6 @@ def assessment_page(models, recommended_key: str, show_landing: bool = True) -> 
     for tab, (pipeline, _), accent in zip(tabs, models.values(), PIPELINE_ACCENTS, strict=True):
         with tab:
             render_pipeline_tab(pipeline.display_name, [r for r in all_records if r.algorithm == pipeline.display_name], images, accent, known_length_cm)
-
-
-def confusion_figure(matrix, title: str):
-    figure, axis = plt.subplots(figsize=(6.2, 4.8))
-    figure.patch.set_facecolor("#0E1D1E")
-    axis.set_facecolor("#0E1D1E")
-    values = np.asarray(matrix)
-    image = axis.imshow(values, cmap="YlGn", aspect="auto")
-    for row in range(values.shape[0]):
-        for column in range(values.shape[1]):
-            colour = "#071315" if values[row, column] > values.max() * .55 else "#F4F7F5"
-            axis.text(column, row, str(values[row, column]), ha="center", va="center", color=colour, fontweight="bold")
-    axis.set_xticks(range(len(CLASS_NAMES)), [x.title() for x in CLASS_NAMES], rotation=30, ha="right")
-    axis.set_yticks(range(len(CLASS_NAMES)), [x.title() for x in CLASS_NAMES])
-    axis.set(xlabel="Predicted class", ylabel="Actual class", title=title)
-    axis.tick_params(colors="#D8E1DC")
-    axis.xaxis.label.set_color("#D8E1DC")
-    axis.yaxis.label.set_color("#D8E1DC")
-    axis.title.set_color("#F4F7F5")
-    colour_bar = figure.colorbar(image, ax=axis, shrink=.8, label="Images")
-    colour_bar.ax.tick_params(colors="#D8E1DC")
-    colour_bar.set_label("Images", color="#D8E1DC")
-    figure.tight_layout()
-    return figure
 
 
 def video_analysis_page(models, recommended_key: str) -> None:
@@ -713,6 +691,19 @@ def evaluation_page(summary, models) -> None:
     metrics[1].metric("Precision", f"{macro['precision']:.2%}")
     metrics[2].metric("Recall", f"{macro['recall']:.2%}")
     metrics[3].metric("F1-Score", f"{macro['f1-score']:.2%}")
+    if "accuracy_ci95" in test_metrics:
+        accuracy_ci = test_metrics["accuracy_ci95"]
+        f1_ci = test_metrics["macro_f1_ci95"]
+        st.caption(
+            f"Bootstrap 95% CI — accuracy {accuracy_ci[0]:.2%}–{accuracy_ci[1]:.2%}; "
+            f"macro-F1 {f1_ci[0]:.2%}–{f1_ci[1]:.2%}."
+        )
+    calibration_fields = ("multiclass_brier_score", "log_loss", "expected_calibration_error")
+    if all(field in test_metrics for field in calibration_fields):
+        calibration = st.columns(3)
+        calibration[0].metric("Multiclass Brier score", f"{test_metrics['multiclass_brier_score']:.4f}")
+        calibration[1].metric("Log loss", f"{test_metrics['log_loss']:.4f}")
+        calibration[2].metric("Calibration error", f"{test_metrics['expected_calibration_error']:.2%}")
 
     st.subheader("Confusion matrix")
     report = pd.DataFrame(test_metrics["classification_report"]).T.loc[list(CLASS_NAMES), ["precision", "recall", "f1-score", "support"]]
@@ -727,12 +718,12 @@ def evaluation_page(summary, models) -> None:
     rows = []
     for rank, result_item in enumerate(summary["results"], 1):
         validation, test = result_item["validation_metrics"], result_item["test_metrics"]
-        rows.append({"Rank": rank, "Algorithm": result_item["algorithm"], "Validation accuracy": validation["accuracy"], "Test accuracy": test["accuracy"], "Macro-F1": test["macro_f1"], "Weighted-F1": test["weighted_f1"], "Generalisation gap": validation["accuracy"] - test["accuracy"], "Training time (s)": result_item.get("elapsed_seconds", 0)})
+        rows.append({"Rank": rank, "Algorithm": result_item["algorithm"], "Validation accuracy": validation["accuracy"], "Validation macro-F1": validation["macro_f1"], "Test accuracy": test["accuracy"], "Test macro-F1": test["macro_f1"], "Weighted-F1": test["weighted_f1"], "Generalisation gap": validation["accuracy"] - test["accuracy"], "Training time (s)": result_item.get("elapsed_seconds", 0)})
     frame = pd.DataFrame(rows)
     st.subheader("Benchmark leaderboard")
-    percent_cols = ["Validation accuracy", "Test accuracy", "Macro-F1", "Weighted-F1", "Generalisation gap"]
+    percent_cols = ["Validation accuracy", "Validation macro-F1", "Test accuracy", "Test macro-F1", "Weighted-F1", "Generalisation gap"]
     st.dataframe(frame.style.format({x: "{:.2%}" for x in percent_cols}), hide_index=True, width="stretch")
-    st.bar_chart(frame.set_index("Algorithm")[["Test accuracy", "Macro-F1", "Weighted-F1"]], color=["#3BA272", "#F4B942", "#5470C6"])
+    st.bar_chart(frame.set_index("Algorithm")[["Test accuracy", "Test macro-F1", "Weighted-F1"]], color=["#3BA272", "#F4B942", "#5470C6"])
     st.subheader("Dataset balance and experimental design")
     split_frame = pd.DataFrame(summary.get("split_counts", {})).reindex(CLASS_NAMES).fillna(0).astype(int)
     split_frame.index = [x.title() for x in split_frame.index]
