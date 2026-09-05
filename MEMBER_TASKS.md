@@ -28,6 +28,6 @@ In addition to individual algorithms, the shared system architecture provides th
 - **Video & Real-Time Stream Engine**: [`src/video.py`](file:///c:/Users/User/Downloads/Banana_Ripeness/src/video.py)  
   *Conveyor belt video frame ingestion, temporal ripeness trend line chart, and live camera snapshot handling.*
 - **Streamlit Prototype UI**: [`app.py`](file:///c:/Users/User/Downloads/Banana_Ripeness/app.py)  
-  *3-page streamlined dashboard presenting all four algorithms, camera snapshots, and Model Evaluation leaderboard.*
+  *5-studio tabbed interface presenting all four algorithms with side-by-side masks, leaderboard, and filter lab.*
 - **Report & Audit Exports**: [`src/exports.py`](file:///c:/Users/User/Downloads/Banana_Ripeness/src/exports.py)  
   *Automated multi-page PDF audit reports and CSV results export.*

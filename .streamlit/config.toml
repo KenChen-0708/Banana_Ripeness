@@ -1,2 +1,3 @@
 [theme]
-base=" dark\n
+base=" dark\n[server]
+maxUploadSize=200
