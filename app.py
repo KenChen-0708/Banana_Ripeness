@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import subprocess
 import sys
@@ -42,8 +43,21 @@ from src.preprocessing import (
 )
 from src.video import process_video
 
-st.set_page_config(page_title="BananaVision Studio", page_icon="🍌", layout="wide")
+st.set_page_config(
+    page_title="Banana Ripeness Assessment",
+    page_icon="🍌",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 PIPELINE_ACCENTS = ["#F4B942", "#3BA272", "#5470C6", "#9A60B4"]
+ASSET_DIR = Path(__file__).parent / "assets"
+
+
+@st.cache_data
+def image_data_uri(path: str) -> str:
+    suffix = Path(path).suffix.removeprefix(".") or "png"
+    payload = base64.b64encode(Path(path).read_bytes()).decode("ascii")
+    return f"data:image/{suffix};base64,{payload}"
 
 
 def apply_theme() -> None:
@@ -171,6 +185,117 @@ def apply_theme() -> None:
     """,
         unsafe_allow_html=True,
     )
+
+
+def apply_reference_theme(dark_mode: bool = True) -> None:
+    """Apply the agreed banana-themed presentation without changing app logic."""
+    palette = (
+        {
+            "canvas": "#071114", "surface": "#0e1d1e", "surface_2": "#112324",
+            "line": "rgba(148,189,175,.13)", "text": "#f5f7f7", "muted": "#aeb8c5",
+            "green": "#7de58e", "green_soft": "rgba(92,205,119,.14)", "sidebar": "#091316",
+        }
+        if dark_mode
+        else {
+            "canvas": "#f4f8f5", "surface": "#ffffff", "surface_2": "#eaf3ec",
+            "line": "rgba(27,75,57,.13)", "text": "#102019", "muted": "#627069",
+            "green": "#2fae58", "green_soft": "rgba(47,174,88,.13)", "sidebar": "#e8f2eb",
+        }
+    )
+    css = """
+    <style>
+    :root {--canvas:__CANVAS__;--surface:__SURFACE__;--surface-2:__SURFACE_2__;
+      --line:__LINE__;--text:__TEXT__;--muted:__MUTED__;--green:__GREEN__;
+      --green-soft:__GREEN_SOFT__;--sidebar:__SIDEBAR__}
+    html,body,[data-testid="stAppViewContainer"],.stApp {color:var(--text);background:
+      radial-gradient(circle at 78% 15%,rgba(82,196,109,.065),transparent 24%),
+      radial-gradient(circle at 53% 62%,rgba(52,132,79,.035),transparent 26%),var(--canvas)!important}
+    html,body,.stApp,[class*="css"] {font-family:Inter,"Segoe UI",Arial,sans-serif}
+    [data-testid="stAppViewContainer"]>.main {margin-left:0}
+    .main .block-container,[data-testid="stMainBlockContainer"] {max-width:1180px;padding:1rem 2.25rem 3rem!important}
+    [data-testid="stHeader"] {background:transparent!important;height:0}
+    [data-testid="stToolbar"],[data-testid="stDecoration"],#MainMenu,footer {display:none!important}
+    [data-testid="stSidebar"] {background:var(--sidebar)!important;border-right:1px solid var(--line)!important;width:297px!important}
+    [data-testid="stSidebar"]>div:first-child {width:330px!important;padding:1.4rem 1rem;zoom:.9}
+    [data-testid="stSidebar"] * {color:var(--text)}
+    [data-testid="stSidebarCollapseButton"] {display:none}
+    h1,h2,h3,h4,h5,h6,p,label,[data-testid="stCaptionContainer"] {color:var(--text);letter-spacing:-.012em}
+    h1,h2,h3 {letter-spacing:-.035em}
+    .material-symbols-rounded {font-family:"Material Symbols Rounded","Material Symbols Outlined";font-weight:normal;font-style:normal;line-height:1;letter-spacing:normal;text-transform:none;white-space:nowrap;word-wrap:normal;direction:ltr;font-feature-settings:"liga";font-variation-settings:"FILL" 0,"wght" 400,"GRAD" 0,"opsz" 24}
+    .brand {display:flex;align-items:center;gap:14px;padding:5px 8px 22px;border-bottom:1px solid var(--line);margin-bottom:14px}
+    .brand-mark {display:grid;place-items:center;width:48px;height:48px;min-width:48px;border-radius:14px;background:var(--green-soft);color:var(--green)!important;font-size:29px}
+    .brand-title {font-size:24px;line-height:1.25;font-weight:760;letter-spacing:-.025em}
+    [data-testid="stSidebar"] [role="radiogroup"] {gap:8px}
+    [data-testid="stSidebar"] [role="radiogroup"] label {border:0!important;border-radius:14px!important;padding:.78rem .9rem!important;margin:0!important;min-height:54px;transition:.2s ease;background:transparent!important}
+    [data-testid="stSidebar"] [role="radiogroup"] label:hover {background:rgba(91,190,115,.08)!important}
+    [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) {background:linear-gradient(100deg,rgba(67,145,91,.30),rgba(69,130,86,.17))!important;border-left:0!important;box-shadow:inset 0 0 0 1px rgba(125,229,142,.04)}
+    [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) p {color:#9bf0a4!important}
+    [data-testid="stSidebar"] [role="radiogroup"] p {display:flex;align-items:center;gap:11px;font-size:17px!important;font-weight:540}
+    [data-testid="stSidebar"] [role="radiogroup"] p:before {font-family:"Material Symbols Rounded","Material Symbols Outlined";font-size:21px;font-weight:normal;line-height:1;color:var(--muted);font-feature-settings:"liga";font-variation-settings:"FILL" 0,"wght" 400,"GRAD" 0,"opsz" 24}
+    [data-testid="stSidebar"] [role="radiogroup"] label:has(input[value="0"]) p:before {content:"image_search"}
+    [data-testid="stSidebar"] [role="radiogroup"] label:has(input[value="1"]) p:before {content:"videocam"}
+    [data-testid="stSidebar"] [role="radiogroup"] label:has(input[value="2"]) p:before {content:"tune"}
+    [data-testid="stSidebar"] [role="radiogroup"] label:has(input[value="3"]) p:before {content:"analytics"}
+    [data-testid="stSidebar"] [role="radiogroup"] label:has(input[value="4"]) p:before {content:"model_training"}
+    [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) p:before {color:var(--green)}
+    [data-testid="stSidebar"] [data-testid="stWidgetLabel"] {display:none}
+    .sidebar-foot {position:fixed;bottom:24px;left:30px;width:260px;color:var(--muted);font-size:12px;line-height:1.5}
+    .st-key-dark_mode {position:relative!important;width:100%!important;z-index:2!important;display:flex!important;justify-content:flex-end!important;min-height:34px!important;margin-top:42px!important;pointer-events:auto!important}
+    .st-key-dark_mode div[data-testid="stToggle"] {width:max-content!important;display:flex!important;justify-content:flex-end;align-items:center}
+    .st-key-dark_mode label {display:flex!important;flex-direction:row!important;align-items:center!important;gap:7px;white-space:nowrap;cursor:pointer!important;padding:6px!important;pointer-events:auto!important}
+    div[data-testid="stToggle"] p {font-size:14px;font-weight:550;color:var(--text)}
+    div[data-testid="stToggle"] [data-baseweb="toggle"],div[data-testid="stToggle"] [role="switch"] {background-color:var(--green)!important;border-color:var(--green)!important}
+    .landing-hero {position:relative;min-height:235px;padding:16px 0 8px;overflow:hidden}
+    .hero-copy {position:relative;z-index:2;width:62%;padding-top:10px}
+    .eyebrow {color:var(--green);text-transform:uppercase;letter-spacing:.27em;font-size:13px;font-weight:800;margin-bottom:11px}
+    .landing-hero h1 {font-size:clamp(2.8rem,4.2vw,4.15rem);line-height:1.02;margin:0;max-width:680px;font-weight:790;color:var(--text)}
+    .landing-hero h1 span {display:block;color:var(--green);margin-top:4px}
+    .landing-hero .subtitle {position:absolute;left:0;top:205px;font-size:16px;color:var(--muted);margin:0;max-width:570px;line-height:1.5}
+    .banana-hero {position:absolute;z-index:1;right:1.5%;top:4px;width:35%;max-width:385px;filter:drop-shadow(0 16px 20px rgba(0,0,0,.30))}
+    .scribble {position:absolute;z-index:3;right:29%;top:35px;width:128px;font-family:"Segoe Print","Comic Sans MS",cursive;font-size:19px;line-height:1.38;color:#eef4f0;transform:rotate(-4deg);text-align:center}
+    .scribble:after {content:"";display:block;width:70px;height:10px;border-top:3px solid var(--green);border-radius:50%;margin:8px auto;transform:rotate(-10deg)}
+    .benefits {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin:0 auto 16px;padding:9px 12px;gap:0;max-width:1040px;background:rgba(14,29,30,.45);border:1px solid rgba(148,189,175,.07);border-radius:15px}
+    .benefit {display:flex;align-items:center;gap:13px;padding:7px 16px;border-right:1px solid var(--line)}
+    .benefit:first-child {padding-left:0}.benefit:last-child {border-right:0}
+    .benefit-icon {display:grid;place-items:center;width:46px;height:46px;min-width:46px;border-radius:50%;background:var(--green-soft);font-size:20px;color:var(--green)}
+    .benefit strong {display:block;color:var(--text);font-size:15px;margin-bottom:3px}.benefit span {color:var(--muted);font-size:13px;white-space:nowrap}
+    div[data-testid="stMetric"] {background:var(--surface)!important;color:var(--text);border:1px solid var(--line)!important;border-radius:16px!important;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.12)}
+    div[data-testid="stMetric"] * {color:var(--text)}
+    .hero {padding:28px!important;border-radius:20px!important;color:var(--text);background:linear-gradient(115deg,var(--surface),var(--surface-2))!important;border:1px solid var(--line)!important;border-left:1px solid var(--line)!important;margin:20px 0!important}
+    .hero h1,.hero p,.hero .eyebrow {color:var(--text)}.hero p {color:var(--muted);margin:.35rem 0 0}.hero .eyebrow {color:var(--green)}
+    .guide-box,.result-card,[data-testid="stExpander"],form,[data-testid="stDataFrame"],[data-testid="stVerticalBlockBorderWrapper"] {color:var(--text);background:var(--surface)!important;border:1px solid var(--line)!important;border-radius:14px!important}
+    .guide-box h4 {color:var(--green)}.section-desc {display:block;color:var(--muted);margin-bottom:0!important;padding-bottom:24px!important}
+    .stTabs [data-baseweb="tab-list"] {gap:8px;background:var(--surface);border-radius:14px;padding:8px}.stTabs [data-baseweb="tab"] {color:var(--muted);background:transparent;border-radius:10px;padding:10px 16px}.stTabs [aria-selected="true"] {color:#071114;background:var(--green)!important}.stTabs [aria-selected="true"] * {color:#071114!important}
+    div[data-baseweb="select"]>div,[data-baseweb="input"]>div,[data-baseweb="textarea"]>div {color:var(--text);background:var(--surface)!important;border-color:var(--line)!important;border-radius:14px}
+    .stMultiSelect [data-tag] {background:var(--green)!important;color:#071114!important}
+    .stMultiSelect [data-tag] span,
+    .stMultiSelect [data-tag] button,
+    .stMultiSelect [data-tag] svg {color:#071114!important;fill:#071114!important;font-weight:600!important}
+    .stMultiSelect [data-tag] svg path {stroke:#071114!important}
+    .st-key-assessment_uploads [data-testid="stFileUploader"] {max-width:820px;margin:12px auto 0;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px 18px 17px}
+    .st-key-assessment_uploads [data-testid="stFileUploader"]>label {display:none}
+    .st-key-assessment_uploads [data-testid="stFileUploaderDropzone"] {padding:8px 18px!important;background:linear-gradient(145deg,rgba(11,24,29,.84),rgba(16,27,31,.7))!important;border:1.5px dashed rgba(172,186,194,.7)!important;border-radius:13px!important;min-height:132px;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:5px!important}
+    .st-key-assessment_uploads [data-testid="stFileUploaderDropzone"]:before {content:"Drag & drop a banana image here\\A or";white-space:pre-line;display:block;padding-top:31px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23d9dc55' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 18h10a4 4 0 0 0 .7-7.94A6 6 0 0 0 6.26 8.1 5 5 0 0 0 7 18Z'/%3E%3Cpath d='m9 13 3-3 3 3M12 10v8'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:center top;background-size:29px 29px;color:var(--muted);font-size:13px;line-height:1.35;text-align:center}
+    .st-key-assessment_uploads [data-testid="stFileUploaderDropzone"]>span {display:flex!important;justify-content:center!important;width:100%!important;text-align:center!important}.st-key-assessment_uploads [data-testid="stFileUploaderDropzoneInstructions"] {display:none!important}
+    .st-key-assessment_uploads [data-testid="stFileUploaderDropzone"]:after {content:"JPG, PNG, JPEG (Max. 10MB)";display:block;color:var(--muted);font-size:12px;line-height:1.35;text-align:center}
+    .st-key-assessment_uploads [data-testid="stFileUploaderDropzone"] button:has([data-testid="stMarkdownContainer"]) {display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:8px!important;background:#f2d33b!important;color:#172015!important;border:0!important;border-radius:8px!important;padding:.48rem 1.35rem!important;font-weight:750!important;font-size:14px!important;min-width:165px;min-height:36px}
+    .st-key-assessment_uploads [data-testid="stFileUploaderDropzone"] button:has([data-testid="stMarkdownContainer"]) [data-testid="stIconMaterial"],.st-key-assessment_uploads [data-testid="stFileUploaderDropzone"] button:has([data-testid="stMarkdownContainer"]) [data-testid="stMarkdownContainer"] {display:none!important}
+    .st-key-assessment_uploads [data-testid="stFileUploaderDropzone"] button:has([data-testid="stMarkdownContainer"]):before {content:"image";font-family:"Material Symbols Rounded";font-size:18px!important;font-weight:500;color:#172015!important;line-height:1}.st-key-assessment_uploads [data-testid="stFileUploaderDropzone"] button:has([data-testid="stMarkdownContainer"]):after {content:"Browse Image";font-size:14px!important;color:#172015!important;line-height:1}
+    [data-testid="stFileUploaderDropzone"] {background:var(--surface)!important;border-color:var(--line)!important}[data-testid="stFileUploaderDropzone"] * {color:var(--text)}
+    [data-testid="stProgressBar"]>div>div {background:var(--green)!important}
+    button[kind="secondary"],button[kind="primary"],.stDownloadButton button {color:#071114!important;background:var(--green)!important;border:1px solid var(--green)!important;border-radius:10px!important}
+    button[kind="secondary"] *,button[kind="primary"] *,.stDownloadButton button * {color:#071114!important;fill:#071114!important}
+    input,textarea,[role="listbox"],[role="option"],[data-baseweb="popover"],[data-baseweb="menu"] {color:var(--text)!important;background:var(--surface-2)!important}
+    [data-testid="stAlert"] {color:var(--text);background:var(--surface);border:1px solid var(--line);padding:16px;border-radius:12px}[data-testid="stAlert"] * {color:var(--text)}
+    hr {border-color:var(--line)}[data-testid="stDataFrame"] {overflow:hidden;box-shadow:0 8px 20px rgba(0,0,0,.08)}
+    @media(max-width:900px){[data-testid="stSidebar"] {width:270px!important}[data-testid="stSidebar"]>div:first-child{width:270px!important;zoom:1}.main .block-container,[data-testid="stMainBlockContainer"]{padding:1rem!important}.landing-hero{min-height:465px}.hero-copy{width:100%}.landing-hero .subtitle{position:static;margin-top:14px}.banana-hero{width:68%;top:225px;right:-5%}.scribble{display:none}.benefits{grid-template-columns:1fr}.benefit{border-right:0;border-bottom:1px solid var(--line);padding:14px 0}}
+    </style>
+    """
+    for name, value in palette.items():
+        css = css.replace(f"__{name.upper()}__", value)
+    st.markdown(css, unsafe_allow_html=True)
+
+
 @st.cache_resource
 def load_models(model_dir: str):
     return discover_bundles(model_dir)
@@ -204,6 +329,29 @@ def section_guide(title: str, rubric_context: str, how_to_use: str) -> None:
 def hero(title: str, subtitle: str, eyebrow: str) -> None:
     st.markdown(
         f'<div class="hero"><div class="eyebrow">{eyebrow}</div><h1>{title}</h1><p>{subtitle}</p></div>',
+        unsafe_allow_html=True,
+    )
+
+
+def landing_hero() -> None:
+    banana_uri = image_data_uri(str(ASSET_DIR / "banana-hero.png"))
+    st.markdown(
+        f"""
+        <section class="landing-hero" data-page="Assessment studio">
+          <div class="hero-copy">
+            <div class="eyebrow">AI Powered</div>
+            <h1>Banana Ripeness <span>Assessment</span></h1>
+            <p class="subtitle">Upload a banana image to assess its ripeness level instantly.</p>
+          </div>
+          <div class="scribble">Right<br>Ripeness,<br>Better Taste,<br>Less Waste</div>
+          <img class="banana-hero" src="{banana_uri}" alt="A bunch of ripe and unripe bananas">
+        </section>
+        <section class="benefits" aria-label="Assessment benefits">
+          <div class="benefit"><div class="benefit-icon"><span class="material-symbols-rounded">bolt</span></div><div><strong>Fast</strong><span>Get results in seconds</span></div></div>
+          <div class="benefit"><div class="benefit-icon"><span class="material-symbols-rounded">analytics</span></div><div><strong>Accurate</strong><span>Trained and evaluated on banana data</span></div></div>
+          <div class="benefit"><div class="benefit-icon"><span class="material-symbols-rounded">eco</span></div><div><strong>Banana-Focused</strong><span>Designed for ripeness classification</span></div></div>
+        </section>
+        """,
         unsafe_allow_html=True,
     )
 
@@ -316,15 +464,31 @@ def render_pipeline_tab(pipeline_name: str, pipeline_records, images: dict[str, 
 
 
 def assessment_page(models, recommended_key: str) -> None:
-    hero("Assessment studio", "Upload images or select presets. All four pipelines evaluate ripeness & geometry simultaneously.", "Surface quality & maturity")
-
-    top_l, top_r = st.columns([2, 1])
-    with top_l:
-        preset_choice = st.selectbox("Quick-load benchmark preset samples", ["-- Choose a preset or upload your own files --"] + list(SAMPLE_PRESETS.keys()))
-        uploads = st.file_uploader("Or drop custom banana images here", type=["jpg", "jpeg", "png"], accept_multiple_files=True, help="Start with one image, then add more at any time.", key="assessment_uploads")
-    with top_r:
-        px_cm = st.slider("Spatial calibration (pixels / cm)", min_value=1.0, max_value=40.0, value=DEFAULT_PIXELS_PER_CM, step=0.5, help="Standardizes pixel dimensions to physical measurements in cm.")
-        st.caption("Commercial quality rules: Grade A (<5% spots), Grade B (5-15%), Grade C (15-30%), Reject (>30% or Rotten).")
+    landing_hero()
+    uploads = st.file_uploader(
+        "Upload banana images",
+        type=["jpg", "jpeg", "png"],
+        accept_multiple_files=True,
+        help="Start with one image, then add more at any time.",
+        key="assessment_uploads",
+    )
+    with st.expander("Optional benchmark sample and calibration settings"):
+        top_l, top_r = st.columns([2, 1])
+        with top_l:
+            preset_choice = st.selectbox(
+                "Quick-load benchmark preset samples",
+                ["-- Choose a preset or upload your own files --"] + list(SAMPLE_PRESETS.keys()),
+            )
+        with top_r:
+            px_cm = st.slider(
+                "Spatial calibration (pixels / cm)",
+                min_value=1.0,
+                max_value=40.0,
+                value=DEFAULT_PIXELS_PER_CM,
+                step=0.5,
+                help="Standardizes pixel dimensions to physical measurements in cm.",
+            )
+            st.caption("Commercial quality rules: Grade A (<5% spots), Grade B (5-15%), Grade C (15-30%), Reject (>30% or Rotten).")
 
     images, errors = {}, []
     if preset_choice and preset_choice in SAMPLE_PRESETS:
@@ -346,7 +510,6 @@ def assessment_page(models, recommended_key: str) -> None:
         st.warning("Some files were skipped:\n\n" + "\n\n".join(errors))
 
     if not images:
-        st.info("Upload at least one JPG or PNG image or choose a preset sample above to begin assessment.")
         return
 
     all_records, completed = [], 0
@@ -380,12 +543,12 @@ def assessment_page(models, recommended_key: str) -> None:
             speed_text = f"{rec_match.processing_time_ms:.1f} ms" if rec_match else "N/A"
             
             st.markdown(
-                f"""<div style="background:#111827; border:1px solid #1e293b; border-top:3px solid {accent}; border-radius:10px; padding:16px; text-align:center;">
+                f"""<div style="background:#111827; border:1px solid #1e293b; border-top:3px solid {accent}; border-radius:10px; padding:16px; text-align:center; height:210px; box-sizing:border-box; display:flex; flex-direction:column; align-items:center;">
                     <div style="font-size:0.75rem; font-weight:700; color:{accent}; text-transform:uppercase;">{tag}</div>
-                    <div style="font-size:0.85rem; color:#94a3b8; margin-bottom:8px;">{p_obj.display_name}</div>
+                    <div style="font-size:0.85rem; color:#94a3b8; margin-bottom:8px; min-height:48px; display:flex; align-items:flex-start; justify-content:center;">{p_obj.display_name}</div>
                     <div style="font-size:1.5rem; font-weight:800; color:#ffffff; margin:4px 0;">{pred_text}</div>
                     <div style="font-size:0.82rem; color:#cbd5e1;">Confidence: <b>{conf_text}</b></div>
-                    <div style="font-size:0.78rem; color:#64748b;">Inference: {speed_text}</div>
+                    <div style="font-size:0.78rem; color:#64748b; margin-top:auto;">Inference: {speed_text}</div>
                 </div>""",
                 unsafe_allow_html=True
             )
@@ -492,45 +655,41 @@ def video_analysis_page(models, recommended_key: str) -> None:
 
 def filter_lab_page(models) -> None:
     hero("Preprocessing & filter lab", "Interactive experimentation with classical filters, histogram equalization, morphology, and colour slicing.", "Core image processing")
-    section_guide(
-        "Preprocessing & Filter Lab Purpose",
-        "Demonstrates fundamental classical computer vision operations required by the course syllabus (spatial filtering, contrast enhancement, morphology, and color slicing).",
-        "Select an image preset, then interact with the real-time sliders in each of the 4 sections below to observe how different filters affect noise, edge preservation, and fruit mask accuracy."
-    )
-
     preset_name = st.selectbox("Select sample for filter experimentation", list(SAMPLE_PRESETS.keys()))
     image_path = PROJECT_ROOT / SAMPLE_PRESETS[preset_name]
     raw_image = decode_image(image_path)
 
     st.subheader("1. Spatial Smoothing & Noise Suppression")
     st.markdown("""<div class="section-desc"><b>Why this matters:</b> Packhouse cameras introduce high-frequency sensor noise. We compare Gaussian vs. Median vs. Bilateral filtering. Notice how the <b>Bilateral Filter</b> smooths the peel surface while keeping the boundary edges of brown necrotic spots sharp!</div>""", unsafe_allow_html=True)
-    f_col1, f_col2, f_col3 = st.columns(3)
-    with f_col1:
+    f_control_col1, f_control_col2, f_control_col3 = st.columns(3)
+    with f_control_col1:
         g_k = st.slider("Gaussian kernel size", 3, 15, 5, step=2)
         g_sigma = st.slider("Gaussian sigma", 0.5, 5.0, 1.5, step=0.5)
-        gaussian_img = apply_gaussian_filter(raw_image, kernel_size=g_k, sigma=g_sigma)
-        st.image(gaussian_img, caption=f"Gaussian Filter (k={g_k}, σ={g_sigma})", width="stretch")
-    with f_col2:
+    with f_control_col2:
         m_k = st.slider("Median filter size", 3, 15, 5, step=2)
-        median_img = apply_median_filter(raw_image, kernel_size=m_k)
-        st.image(median_img, caption=f"Median Filter (k={m_k}) - Impulse noise removal", width="stretch")
-    with f_col3:
+    with f_control_col3:
         b_d = st.slider("Bilateral diameter", 3, 15, 9, step=2)
-        bilateral_img = apply_bilateral_filter(raw_image, d=b_d)
-        st.image(bilateral_img, caption=f"Bilateral Filter (d={b_d}) - Edge-preserving", width="stretch")
+
+    gaussian_img = apply_gaussian_filter(raw_image, kernel_size=g_k, sigma=g_sigma)
+    median_img = apply_median_filter(raw_image, kernel_size=m_k)
+    bilateral_img = apply_bilateral_filter(raw_image, d=b_d)
+    f_image_col1, f_image_col2, f_image_col3 = st.columns(3)
+    f_image_col1.image(gaussian_img, caption=f"Gaussian Filter (k={g_k}, σ={g_sigma})", width="stretch")
+    f_image_col2.image(median_img, caption=f"Median Filter (k={m_k}) - Impulse noise removal", width="stretch")
+    f_image_col3.image(bilateral_img, caption=f"Bilateral Filter (d={b_d}) - Edge-preserving", width="stretch")
 
     st.subheader("2. Illumination Invariance & Contrast Enhancement")
     st.markdown("""<div class="section-desc"><b>Why this matters:</b> Conveyor lighting can be uneven. Linear stretching standardizes dynamic range, while <b>CLAHE (Contrast Limited Adaptive Histogram Equalization)</b> amplifies subtle green-yellow hue boundaries without over-amplifying background noise.</div>""", unsafe_allow_html=True)
-    c_col1, c_col2, c_col3 = st.columns(3)
-    with c_col1:
-        st.image(raw_image, caption="Original RGB input", width="stretch")
-    with c_col2:
-        stretched_img = apply_contrast_stretching(raw_image)
-        st.image(stretched_img, caption="Linear Min-Max Contrast Stretching", width="stretch")
-    with c_col3:
+    _, _, clahe_control_col = st.columns(3)
+    with clahe_control_col:
         clahe_clip = st.slider("CLAHE clip limit", 1.0, 6.0, 2.5, step=0.5)
-        clahe_img = apply_clahe(raw_image, clip_limit=clahe_clip)
-        st.image(clahe_img, caption=f"CLAHE (Clip={clahe_clip}) - Adaptive Equalization", width="stretch")
+
+    stretched_img = apply_contrast_stretching(raw_image)
+    clahe_img = apply_clahe(raw_image, clip_limit=clahe_clip)
+    c_image_col1, c_image_col2, c_image_col3 = st.columns(3)
+    c_image_col1.image(raw_image, caption="Original RGB input", width="stretch")
+    c_image_col2.image(stretched_img, caption="Linear Min-Max Contrast Stretching", width="stretch")
+    c_image_col3.image(clahe_img, caption=f"CLAHE (Clip={clahe_clip}) - Adaptive Equalization", width="stretch")
 
     st.subheader("3. Mathematical Morphology & Binary Mask Refinement")
     st.markdown("""<div class="section-desc"><b>Why this matters:</b> Initial color thresholding produces ragged edges and pinhole voids due to specular reflections. <b>Erosion</b> removes isolated dust pixels, <b>Dilation</b> expands boundaries, and <b>Closing</b> seals internal glare voids to create a solid banana mask.</div>""", unsafe_allow_html=True)
@@ -605,11 +764,6 @@ def confusion_figure(matrix, title: str):
 
 def evaluation_page(summary, models) -> None:
     hero("Model evaluation & leaderboard", "Compare held-out performance, macro-F1, and inspect class-level error matrices.", "Mode A: comparative study")
-    section_guide(
-        "Comparative Leaderboard & Benchmark Protocol",
-        "Directly answers the Mode A requirement: comparing the 4 individual member algorithms on a strictly separated held-out test split under balanced Macro-F1 and Accuracy metrics.",
-        "Inspect the leaderboard rankings, examine the class balance bar chart, and use the diagnostic explorer below to inspect the confusion matrix and precision/recall per maturity class."
-    )
     if not summary:
         st.warning("Run `scripts/train_compare.py` to generate evaluation results.")
         return
@@ -672,11 +826,6 @@ def evaluation_page(summary, models) -> None:
 
 def training_page(models) -> None:
     hero("Model training & reproducibility", "Configure training runs, feature caching, and reproduce held-out benchmarks.", "Pipeline training")
-    section_guide(
-        "Model Training & Scientific Reproducibility",
-        "Allows full re-training of all 4 pipelines on the dataset with automated feature extraction caching and parameter logging.",
-        "Select the pipelines you wish to train, configure the subset or full dataset, and click 'Start model training' to rebuild the models."
-    )
     options = {PIPELINE_CLASSES[key]().display_name: key for key in PIPELINE_CLASSES}
     with st.form("training_configuration"):
         selected = st.multiselect("Pipelines", list(options), default=list(options))
@@ -733,42 +882,59 @@ def training_page(models) -> None:
                     status.update(label="Training failed", state="error")
 
 
+def sync_theme_preference() -> None:
+    """Keep the selected theme when the browser page is refreshed."""
+    st.query_params["theme"] = "dark" if st.session_state.dark_mode else "light"
+
+
 def main() -> None:
-    apply_theme()
+    if "dark_mode" not in st.session_state:
+        st.session_state.dark_mode = st.query_params.get("theme", "dark") != "light"
+
+    dark_mode = st.toggle(
+        "Dark Mode",
+        key="dark_mode",
+        on_change=sync_theme_preference,
+    )
+    apply_reference_theme(dark_mode)
     models = model_state()
     summary = load_evaluation(str(DEFAULT_ARTIFACT_DIR / "evaluation_summary.json"))
-    st.sidebar.markdown("## 🍌 BananaVision Studio")
-    st.sidebar.caption("Classical Image Processing & Fruit Ripeness Assessment")
+    st.sidebar.markdown(
+        '<div class="brand"><span class="brand-mark material-symbols-rounded">eco</span><div class="brand-title">Banana Ripeness<br>Assessment</div></div>',
+        unsafe_allow_html=True,
+    )
 
     page = st.sidebar.radio(
         "Navigation",
         [
-            "🍌 Assessment Studio",
-            "🎥 Video & Live Camera Stream",
-            "🔬 Preprocessing & Filter Lab",
-            "📊 Model Evaluation",
-            "⚙️ Model Training",
+            "Assessment",
+            "Video Analysis",
+            "Preprocessing Lab",
+            "Model Evaluation",
+            "Model Training",
         ],
+    )
+    st.sidebar.markdown(
+        '<div class="sidebar-foot">AI-assisted ripeness insight<br>Version 1.0</div>',
+        unsafe_allow_html=True,
     )
 
     if not models:
         st.warning("No trained model bundles were found. Open Model training to configure the first run.")
-        if page == "⚙️ Model Training":
+        if page == "Model Training":
             training_page(models)
         return
 
     recommended_key = summary.get("recommended_pipeline") if summary else next(iter(models))
     if recommended_key not in models:
         recommended_key = next(iter(models))
-    st.sidebar.success(f"Recommended Pipeline:\n\n**{models[recommended_key][0].display_name}**")
-
-    if page == "🍌 Assessment Studio":
+    if page == "Assessment":
         assessment_page(models, recommended_key)
-    elif page == "🎥 Video & Live Camera Stream":
+    elif page == "Video Analysis":
         video_analysis_page(models, recommended_key)
-    elif page == "🔬 Preprocessing & Filter Lab":
+    elif page == "Preprocessing Lab":
         filter_lab_page(models)
-    elif page == "📊 Model Evaluation":
+    elif page == "Model Evaluation":
         evaluation_page(summary, models)
     else:
         training_page(models)
