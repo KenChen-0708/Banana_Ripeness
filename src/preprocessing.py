@@ -137,15 +137,18 @@ def banana_mask(image: np.ndarray, size: tuple[int, int] = (224, 224)) -> np.nda
     value = hsv[:, :, 2]
     hue = hsv[:, :, 0]
 
-    # Fruit has distinct chromaticity (yellow, green, or warm brown)
-    chromatic_fruit = (saturation >= 32) & (value >= 25) & (hue <= 95)
+    b_channel = lab[:, :, 2]
+    chromatic_fruit = (saturation >= 30) & (value >= 25) & (hue <= 95)
     
-    # Shadow suppression for dark surfaces/tables
-    if background[0] < 120:  # dark or medium background
+    # Adaptive background & shadow suppression
+    if background[2] < 126:  # Cool / blue / lilac background (b* < 126)
+        # Fruit must have warm/yellow/green tone (b* >= 132) to reject cool cast shadows
+        candidate = (b_channel >= 132) & (colour_distance >= 18) & (value >= 25)
+    elif background[0] < 120:  # Dark / black surface (L* < 120)
         is_shadow = (value < background[0] + 15) & (saturation < 30)
         candidate = ((colour_distance >= 22) & ~is_shadow) | chromatic_fruit
         candidate = candidate & (value >= 25) & ~is_shadow
-    else:
+    else:  # Standard light / white studio background
         candidate = ((colour_distance >= 18) | chromatic_fruit) & (value >= 18)
 
     mask = (candidate.astype(np.uint8) * 255)
@@ -181,10 +184,13 @@ def colour_masks(
     fruit = mask > 0
     h, s, v = cv2.split(hsv)
 
-    green = fruit & (h >= 32) & (h <= 95) & (s >= 45) & (v >= 35)
-    yellow = fruit & (h >= 18) & (h < 40) & (s >= 45) & (v >= 60)
+    green = fruit & (h >= 28) & (h <= 95) & (s >= 35) & (v >= 25)
+    yellow = fruit & (h >= 16) & (h < 38) & (s >= 40) & (v >= 50)
     brown = fruit & (h >= brown_h_range[0]) & (h <= brown_h_range[1]) & (s >= 35) & (v >= 20) & (v <= 190)
-    dark = fruit & (v < dark_v_thresh) & (s >= 15)
+    
+    # Exclude healthy green chlorophyll from false blemish detection
+    is_chlorophyll = (h >= 28) & (h <= 95) & (s >= 25)
+    dark = fruit & (v < dark_v_thresh) & (s >= 15) & ~is_chlorophyll & ((h <= 26) | (v < 38))
     return {
         "fruit": mask,
         "green": green.astype(np.uint8) * 255,
