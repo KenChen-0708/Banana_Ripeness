@@ -39,7 +39,13 @@ def extract_features(
 ) -> tuple[np.ndarray, np.ndarray]:
     if use_cache and cache_path.exists():
         cached = np.load(cache_path, allow_pickle=False)
-        if list(cached["paths"]) == [str(item.path) for item in items]:
+        cache_version = str(cached["feature_version"].item()) if "feature_version" in cached.files else None
+        cache_size = tuple(cached["image_size"].tolist()) if "image_size" in cached.files else None
+        if (
+            cache_version == pipeline.feature_version
+            and cache_size == pipeline.image_size
+            and list(cached["paths"]) == [str(item.path) for item in items]
+        ):
             return cached["features"], cached["labels"]
 
     features: list[np.ndarray] = []
@@ -58,6 +64,8 @@ def extract_features(
         features=matrix,
         labels=label_array,
         paths=np.asarray([str(item.path) for item in items]),
+        feature_version=np.asarray(pipeline.feature_version),
+        image_size=np.asarray(pipeline.image_size, dtype=np.int32),
     )
     return matrix, label_array
 
@@ -120,6 +128,21 @@ def main() -> None:
         print(f"  {split}: {len(items)} {class_counts(items)}")
 
     results = [train_pipeline(key, splits, args.artifacts, not args.no_cache) for key in args.pipelines]
+    summary_path = args.artifacts / "evaluation_summary.json"
+    if summary_path.exists() and set(args.pipelines) != set(PIPELINE_CLASSES):
+        previous = json.loads(summary_path.read_text(encoding="utf-8"))
+        same_experiment = (
+            Path(previous.get("dataset", "")).resolve() == args.dataset.resolve()
+            and previous.get("development_subset_per_class") == args.limit_per_class
+        )
+        if same_experiment:
+            previous_by_key = {item["pipeline_key"]: item for item in previous.get("results", [])}
+            updated_keys = {item["pipeline_key"] for item in results}
+            results.extend(
+                previous_by_key[key]
+                for key in PIPELINE_CLASSES
+                if key not in updated_keys and key in previous_by_key
+            )
     ranked = rank_results(results)
     summary = {
         "dataset": str(args.dataset.resolve()),
@@ -130,7 +153,7 @@ def main() -> None:
         "results": ranked,
     }
     args.artifacts.mkdir(parents=True, exist_ok=True)
-    (args.artifacts / "evaluation_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
     ranking_frame = pd.DataFrame(
         [
             {
