@@ -73,6 +73,28 @@ def apply_theme() -> None:
     [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) {background:#e7dfbd}
     [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) * {color:var(--forest)!important}
     [data-testid="stTooltipContent"] {color:#e8f0df!important;background:#173b2d!important}
+    .mode-header {display:flex;align-items:center;gap:10px;margin:6px 0 14px}
+    .mode-badge {display:inline-block;color:#fff;background:#245b45;border-radius:999px;padding:5px 10px;
+      font-size:.7rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase}
+    .mode-header h2 {margin:0;color:#173b2d}.mode-header p {margin:2px 0 0;color:#245b45;opacity:.82}
+    .camera-panel,.guide-panel,.status-card,.preview-card {border:1px solid #a5c0a1;border-radius:18px;padding:18px;
+      background:linear-gradient(145deg,#e8f0df,#dce9d5);box-shadow:0 8px 20px rgba(23,59,45,.07)}
+    .camera-panel {background:linear-gradient(145deg,#dce9d5,#e7dfbd)}
+    .guide-panel h3,.status-card h3,.preview-card h3 {margin:0 0 5px;color:#173b2d}
+    .guide-panel p,.status-card p,.preview-card p {margin:0;color:#245b45;line-height:1.5}
+    .guide-step {display:flex;gap:10px;align-items:flex-start;margin:14px 0}
+    .step-number {flex:0 0 26px;width:26px;height:26px;line-height:26px;text-align:center;border-radius:50%;
+      color:#fff;background:#3f7d5c;font-size:.78rem;font-weight:800}
+    .guide-step b {display:block;color:#173b2d;margin-bottom:1px}.guide-step span {font-size:.88rem;color:#245b45}
+    .live-status {display:flex;align-items:center;gap:8px;margin:10px 0 4px;font-weight:700;color:#173b2d}
+    .live-dot {width:10px;height:10px;border-radius:50%;background:#c69214;box-shadow:0 0 0 4px rgba(198,146,20,.15)}
+    .live-dot.active {background:#3f7d5c;box-shadow:0 0 0 4px rgba(63,125,92,.15)}
+    .live-result-banner {margin:18px 0 8px;padding:18px 20px;border-radius:18px;border:1px solid #9ebc9a;
+      border-left:6px solid #c69214;background:linear-gradient(120deg,#dce9d5,#eee2bd);box-shadow:0 8px 22px rgba(23,59,45,.09)}
+    .live-result-banner .eyebrow {color:#245b45}.live-result-banner h2 {color:#173b2d;margin:3px 0}
+    .live-result-banner p {margin:0;color:#245b45}.camera-note {margin-top:10px;color:#245b45;font-size:.88rem}
+    [data-testid="stCameraInput"] {border:1px dashed #3f7d5c;border-radius:16px;padding:8px;background:#e8f0df}
+    [data-testid="stCameraInput"] * {color:#173b2d}
     </style>""", unsafe_allow_html=True)
 
 
@@ -99,6 +121,37 @@ def hero(title: str, subtitle: str, eyebrow: str) -> None:
     st.markdown(f'<div class="hero"><div class="eyebrow">{eyebrow}</div><h1>{title}</h1><p>{subtitle}</p></div>', unsafe_allow_html=True)
 
 
+def camera_mode_header(badge: str, title: str, description: str) -> None:
+    st.markdown(
+        f'<div class="mode-header"><span class="mode-badge">{badge}</span><div><h2>{title}</h2><p>{description}</p></div></div>',
+        unsafe_allow_html=True,
+    )
+
+
+def camera_guidance_panel() -> None:
+    st.markdown(
+        """<div class="guide-panel"><h3>How to get a clear result</h3><p>One banana at a time gives the most reliable assessment.</p>
+        <div class="guide-step"><span class="step-number">1</span><div><b>Position</b><span>Keep the full banana centred and clearly visible.</span></div></div>
+        <div class="guide-step"><span class="step-number">2</span><div><b>Light evenly</b><span>Avoid strong shadows, glare and very dark scenes.</span></div></div>
+        <div class="guide-step"><span class="step-number">3</span><div><b>Assess</b><span>Capture a photo or start the live stream to run all pipelines.</span></div></div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+
+def live_result_banner(records, models, recommended_key: str, age_seconds: float | None = None) -> None:
+    recommended_name = models[recommended_key][0].display_name
+    record = next(item for item in records if item.algorithm == recommended_name)
+    votes = pd.Series([item.predicted_class for item in records]).value_counts()
+    agreement_text = "All pipelines agree" if len(votes) == 1 else f"Leading vote: {int(votes.iloc[0])} of {len(records)} models"
+    freshness = f" · updated {age_seconds:.1f}s ago" if age_seconds is not None else ""
+    st.markdown(
+        f'<div class="live-result-banner"><div class="eyebrow">Latest recommended assessment</div><h2>{record.predicted_class.title()}</h2>'
+        f'<p>{record.confidence:.1%} confidence · {confidence_label(record.confidence)} · {agreement_text}{freshness}</p></div>',
+        unsafe_allow_html=True,
+    )
+
+
 def confidence_label(value: float) -> str:
     return "High confidence" if value >= .8 else "Moderate confidence" if value >= .6 else "Manual review advised"
 
@@ -117,17 +170,17 @@ def assessment_summary(records, recommended_name: str, key_prefix: str = "assess
     st.caption(f"Grade distribution · {recommended_name}")
     st.bar_chart(recommended["predicted_class"].value_counts().reindex(CLASS_NAMES, fill_value=0), color="#3BA272")
     a, b, _ = st.columns([1, 1, 2])
-    a.download_button("Export all-pipeline CSV", records_csv(records), "all_pipeline_assessment.csv", "text/csv", key=f"{key_prefix}_all_csv", use_container_width=True)
-    b.download_button("Export summary PDF", records_pdf(records), "all_pipeline_assessment.pdf", "application/pdf", key=f"{key_prefix}_summary_pdf", use_container_width=True)
+    a.download_button("Export all-pipeline CSV", records_csv(records), "all_pipeline_assessment.csv", "text/csv", key=f"{key_prefix}_all_csv", width="stretch")
+    b.download_button("Export summary PDF", records_pdf(records), "all_pipeline_assessment.pdf", "application/pdf", key=f"{key_prefix}_summary_pdf", width="stretch")
 
 
 def render_explanation(image: np.ndarray, record) -> None:
     explanation = record.explanation
     original = resize_rgb(image, (224, 224))
     cols = st.columns(3)
-    cols[0].image(original, caption="Standardised RGB input", use_container_width=True)
-    cols[1].image(explanation["fruit_mask"], caption="Detected fruit region", clamp=True, use_container_width=True)
-    cols[2].image(mask_overlay(original, explanation["brown_mask"]), caption="Blemish / dark-region overlay", use_container_width=True)
+    cols[0].image(original, caption="Standardised RGB input", width="stretch")
+    cols[1].image(explanation["fruit_mask"], caption="Detected fruit region", clamp=True, width="stretch")
+    cols[2].image(mask_overlay(original, explanation["brown_mask"]), caption="Blemish / dark-region overlay", width="stretch")
     ratio_values = [
         ("Green surface ratio", explanation.get("green_ratio", 0)),
         ("Yellow surface ratio", explanation.get("yellow_ratio", 0)),
@@ -160,11 +213,11 @@ def render_pipeline_tab(pipeline_name: str, pipeline_records, images: dict[str, 
         render_explanation(images[filename], record)
     st.subheader("Pipeline result ledger")
     display = frame[["filename", "predicted_class", "confidence", "processing_time_ms"]]
-    st.dataframe(display.style.format({"confidence": "{:.1%}", "processing_time_ms": "{:.1f}"}), hide_index=True, use_container_width=True)
+    st.dataframe(display.style.format({"confidence": "{:.1%}", "processing_time_ms": "{:.1f}"}), hide_index=True, width="stretch")
     a, b, _ = st.columns([1, 1, 2])
     slug = pipeline_name.lower().replace(" ", "_").replace("+", "plus").replace("*", "")
-    a.download_button("Export pipeline CSV", records_csv(pipeline_records), f"{slug}_results.csv", "text/csv", key=f"{key_prefix}_csv_{slug}", use_container_width=True)
-    b.download_button("Export detail PDF", records_pdf(pipeline_records, f"{pipeline_name} - Detailed Assessment Report"), f"{slug}_report.pdf", "application/pdf", key=f"{key_prefix}_pdf_{slug}", use_container_width=True)
+    a.download_button("Export pipeline CSV", records_csv(pipeline_records), f"{slug}_results.csv", "text/csv", key=f"{key_prefix}_csv_{slug}", width="stretch")
+    b.download_button("Export detail PDF", records_pdf(pipeline_records, f"{pipeline_name} - Detailed Assessment Report"), f"{slug}_report.pdf", "application/pdf", key=f"{key_prefix}_pdf_{slug}", width="stretch")
 
 
 def render_assessment_results(records, images: dict[str, np.ndarray], models, recommended_key: str, key_prefix: str) -> None:
@@ -218,12 +271,19 @@ def _captured_image_state() -> tuple[bytes | None, object | None]:
 
 
 def image_capture_page(models, recommended_key: str) -> None:
-    st.subheader("Image Capture")
-    st.caption("Capture one clearly visible banana, review the preview, then confirm the assessment.")
-    captured = st.camera_input("Capture a banana image", key="live_capture_input")
+    camera_mode_header("Image capture", "Take a clear banana photo", "Review the camera image before running the all-pipeline assessment.")
+    camera_col, guide_col = st.columns([1.55, .85], gap="large")
+    with camera_col:
+        with st.container(border=True):
+            st.markdown("### Camera workspace")
+            st.caption("Capture one banana with its full peel visible.")
+            captured = st.camera_input("Take a banana photo", key="live_capture_input", width="stretch")
+            st.markdown('<p class="camera-note">Your browser will ask for camera permission. Capture a new image at any time to replace the current preview.</p>', unsafe_allow_html=True)
+    with guide_col:
+        camera_guidance_panel()
     captured_bytes, captured = _captured_image_state()
     if captured is None:
-        st.info("Allow camera access, centre one banana in the frame, and take a picture.")
+        st.markdown('<div class="status-card"><h3>Ready to capture</h3><div class="live-status"><span class="live-dot"></span>Camera waiting for an image</div><p>Take a photo above, then confirm it when the preview looks clear.</p></div>', unsafe_allow_html=True)
         return
 
     try:
@@ -232,16 +292,22 @@ def image_capture_page(models, recommended_key: str) -> None:
         st.error(f"Captured image could not be used: {exc}")
         return
 
-    st.image(image, caption="Captured image preview", use_container_width=True)
-    first, second, _ = st.columns([1, 1, 2])
-    if first.button("Confirm assessment", type="primary", key="confirm_live_capture", use_container_width=True):
-        with st.spinner("Running existing image-processing pipelines..."):
-            st.session_state["live_capture_records"] = assess_image(models, image, "captured_banana.jpg")
-            st.session_state["live_capture_confirmed_bytes"] = captured_bytes
-    second.caption("To retake, use the camera control above to capture a new image.")
+    preview_col, readiness_col = st.columns([1.45, .95], gap="large")
+    with preview_col:
+        st.markdown('<div class="preview-card"><h3>Capture ready</h3><p>Check that the banana is centred, fully visible and evenly lit.</p></div>', unsafe_allow_html=True)
+        st.image(image, caption="Captured image preview", width="stretch")
+    with readiness_col:
+        st.markdown('<div class="status-card"><h3>Assessment readiness</h3><div class="live-status"><span class="live-dot active"></span>Image received</div><p>Your confirmed image will pass through all available BananaVision pipelines, then show probabilities, masks and explanation values.</p></div>', unsafe_allow_html=True)
+        if st.button("Confirm assessment", type="primary", key="confirm_live_capture", width="stretch"):
+            with st.spinner("Running existing image-processing pipelines..."):
+                st.session_state["live_capture_records"] = assess_image(models, image, "captured_banana.jpg")
+                st.session_state["live_capture_confirmed_bytes"] = captured_bytes
+        st.markdown('<p class="camera-note"><b>Want another photo?</b><br>Use the camera workspace above to capture a replacement. Any unconfirmed result is cleared automatically.</p>', unsafe_allow_html=True)
 
     records = st.session_state.get("live_capture_records", [])
     if records and st.session_state.get("live_capture_confirmed_bytes") == captured_bytes:
+        live_result_banner(records, models, recommended_key)
+        st.markdown("### Detailed pipeline comparison")
         render_assessment_results(records, {"captured_banana.jpg": image}, models, recommended_key, "capture")
 
 
@@ -256,9 +322,12 @@ def _live_assessor(models, interval_seconds: float) -> SampledFrameAssessor:
 
 
 def real_time_assessment_page(models, recommended_key: str) -> None:
-    st.subheader("Real-Time Assessment")
-    st.caption("Start the camera below. The system samples one frame at a time to keep all four existing pipelines responsive.")
-    interval_seconds = st.slider("Assessment interval (seconds)", 1.0, 5.0, 2.0, 0.5, key="live_interval")
+    camera_mode_header("Live stream", "Assess sampled camera frames", "Keep one banana in view while BananaVision periodically refreshes its all-pipeline result.")
+    stream_col, status_col = st.columns([1.55, .85], gap="large")
+    with status_col:
+        st.markdown('<div class="status-card"><h3>Live assessment setup</h3><p>Sampling avoids running every frame, keeping the stream responsive while still updating the latest ripeness result.</p></div>', unsafe_allow_html=True)
+        interval_seconds = st.slider("Assessment interval (seconds)", 1.0, 5.0, 2.0, 0.5, key="live_interval")
+        st.markdown('<p class="camera-note"><b>Stream guidance</b><br>Use Start in the camera panel, approve browser access, and hold one banana clearly in frame.</p>', unsafe_allow_html=True)
     assessor = _live_assessor(models, interval_seconds)
     try:
         from streamlit_webrtc import WebRtcMode, webrtc_streamer
@@ -275,22 +344,27 @@ def real_time_assessment_page(models, recommended_key: str) -> None:
             assessor.record_error(f"Camera frame could not be processed: {exc}")
         return frame
 
-    try:
-        context = webrtc_streamer(
-            key="banana_live_assessment",
-            mode=WebRtcMode.SENDRECV,
-            video_frame_callback=video_frame_callback,
-            media_stream_constraints={"video": True, "audio": False},
-            async_processing=True,
-        )
-    except Exception as exc:
-        st.error(f"The live camera could not be started: {exc}")
-        return
+    with stream_col:
+        with st.container(border=True):
+            st.markdown("### Live camera workspace")
+            st.caption("Use the controls below to start or stop the camera feed.")
+            try:
+                context = webrtc_streamer(
+                    key="banana_live_assessment",
+                    mode=WebRtcMode.SENDRECV,
+                    video_frame_callback=video_frame_callback,
+                    media_stream_constraints={"video": True, "audio": False},
+                    async_processing=True,
+                )
+            except Exception as exc:
+                st.error(f"The live camera could not be started: {exc}")
+                return
 
-    if context.state.playing:
-        st.success("Live camera is running. Use the Stop control in the camera panel to end the stream.")
-    else:
-        st.info("Use Start in the camera panel and allow browser camera permission.")
+    with status_col:
+        if context.state.playing:
+            st.markdown(f'<div class="status-card"><h3>Live status</h3><div class="live-status"><span class="live-dot active"></span>Camera stream active</div><p>Four pipelines assess one frame every {interval_seconds:.1f} seconds. Use Stop in the camera workspace when you finish.</p></div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="status-card"><h3>Camera ready to start</h3><div class="live-status"><span class="live-dot"></span>Waiting for browser permission</div><p>Select Start in the camera workspace. Your first result appears after the next sampling interval.</p></div>', unsafe_allow_html=True)
 
     @st.fragment(run_every="1s")
     def render_live_snapshot() -> None:
@@ -299,7 +373,8 @@ def real_time_assessment_page(models, recommended_key: str) -> None:
             st.error(snapshot.error)
         elif snapshot.records and snapshot.image is not None:
             age = max(0.0, monotonic() - (snapshot.captured_at or 0.0))
-            st.caption(f"Latest sampled frame: {age:.1f} seconds ago")
+            live_result_banner(list(snapshot.records), models, recommended_key, age)
+            st.markdown("### Detailed pipeline comparison")
             render_assessment_results(
                 list(snapshot.records),
                 {"live_camera_frame": snapshot.image},
@@ -308,7 +383,7 @@ def real_time_assessment_page(models, recommended_key: str) -> None:
                 "live",
             )
         elif context.state.playing:
-            st.info("Waiting for the first sampled camera frame...")
+            st.markdown('<div class="status-card"><h3>Waiting for the first sampled frame</h3><div class="live-status"><span class="live-dot active"></span>Stream connected</div><p>Hold one banana clearly in view. A complete result will appear after the next sampling interval.</p></div>', unsafe_allow_html=True)
 
     render_live_snapshot()
 
@@ -364,7 +439,7 @@ def evaluation_page(summary, models) -> None:
     metrics[3].metric("Held-out test images", totals.get("test", "N/A"))
     st.subheader("Benchmark leaderboard")
     percent_cols = ["Validation accuracy", "Test accuracy", "Macro-F1", "Weighted-F1", "Generalisation gap"]
-    st.dataframe(frame.style.format({x: "{:.2%}" for x in percent_cols}), hide_index=True, use_container_width=True)
+    st.dataframe(frame.style.format({x: "{:.2%}" for x in percent_cols}), hide_index=True, width="stretch")
     st.bar_chart(frame.set_index("Algorithm")[["Test accuracy", "Macro-F1", "Weighted-F1"]], color=["#3BA272", "#F4B942", "#5470C6"])
     st.subheader("Dataset balance and experimental design")
     split_frame = pd.DataFrame(summary.get("split_counts", {})).reindex(CLASS_NAMES).fillna(0).astype(int)
@@ -378,10 +453,10 @@ def evaluation_page(summary, models) -> None:
     report = pd.DataFrame(item["test_metrics"]["classification_report"]).T.loc[list(CLASS_NAMES), ["precision", "recall", "f1-score", "support"]]
     plot_col, class_col = st.columns([1.05, 1])
     with plot_col:
-        st.pyplot(confusion_figure(item["test_metrics"]["confusion_matrix"], f"{selected}\nHeld-out test confusion matrix"), use_container_width=True)
+        st.pyplot(confusion_figure(item["test_metrics"]["confusion_matrix"], f"{selected}\nHeld-out test confusion matrix"), width="stretch")
     with class_col:
         st.caption("Class-level performance")
-        st.dataframe(report.style.format({"precision": "{:.3f}", "recall": "{:.3f}", "f1-score": "{:.3f}", "support": "{:.0f}"}), use_container_width=True)
+        st.dataframe(report.style.format({"precision": "{:.3f}", "recall": "{:.3f}", "f1-score": "{:.3f}", "support": "{:.0f}"}), width="stretch")
         st.bar_chart(report[["precision", "recall", "f1-score"]], color=["#5470C6", "#F4B942", "#3BA272"])
     if item["pipeline_key"] in models:
         with st.expander("Reproducibility manifest and estimator parameters"):
@@ -403,7 +478,7 @@ def training_page(models) -> None:
         limit = first.number_input("Images per class / split", 5, 5000, 30, disabled=not limited)
         use_cache = second.checkbox("Reuse validated feature cache", value=True)
         second.caption("Disable cache after changing feature extraction logic.")
-        submitted = st.form_submit_button("Validate configuration", use_container_width=True)
+        submitted = st.form_submit_button("Validate configuration", width="stretch")
     if not selected:
         st.warning("Select at least one pipeline.")
         return
@@ -422,7 +497,7 @@ def training_page(models) -> None:
     st.caption("Training can be computationally intensive. Progress and evaluation artefacts are written under `artifacts/`.")
     if submitted:
         st.success("Configuration is valid and ready to run.") if Path(dataset).exists() else st.error(f"Dataset directory does not exist: {dataset}")
-    if st.button("Start model training", type="primary", use_container_width=True):
+    if st.button("Start model training", type="primary", width="stretch"):
         if not Path(dataset).exists():
             st.error(f"Dataset directory does not exist: {dataset}")
         else:
