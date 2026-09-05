@@ -139,27 +139,26 @@ def assessment_summary(records, recommended_name: str) -> None:
     agreement = frame.groupby("filename")["predicted_class"].nunique().eq(1).mean()
     mean_blemish = frame["blemish_percent"].mean() if "blemish_percent" in frame.columns else 0.0
 
-    with st.expander("📊 Advanced Consensus Summary & Data Exports", expanded=False):
-        st.subheader("Completed all-pipeline consensus summary")
-        cols = st.columns(5)
-        cols[0].metric("Images assessed", frame["filename"].nunique())
-        cols[1].metric("Pipeline runs", len(frame))
-        cols[2].metric("Cross-model agreement", f"{agreement:.0%}")
-        cols[3].metric("Mean confidence", f"{frame['confidence'].mean():.1%}")
-        cols[4].metric("Avg blemish surface", f"{mean_blemish:.1f}%")
+    st.subheader("Completed all-pipeline consensus summary")
+    cols = st.columns(5)
+    cols[0].metric("Images assessed", frame["filename"].nunique())
+    cols[1].metric("Pipeline runs", len(frame))
+    cols[2].metric("Cross-model agreement", f"{agreement:.0%}")
+    cols[3].metric("Mean confidence", f"{frame['confidence'].mean():.1%}")
+    cols[4].metric("Avg blemish surface", f"{mean_blemish:.1f}%")
 
-        col_chart1, col_chart2 = st.columns(2)
-        with col_chart1:
-            st.caption(f"Maturity stage distribution ({recommended_name})")
-            st.bar_chart(recommended["predicted_class"].value_counts().reindex(CLASS_NAMES, fill_value=0), color="#3BA272")
-        with col_chart2:
-            st.caption("Commercial quality grade breakdown")
-            grade_order = ["Grade A (Premium)", "Grade B (Standard)", "Grade C (Processing)", "Reject / Rotten"]
-            st.bar_chart(recommended["quality_grade"].value_counts().reindex(grade_order, fill_value=0), color="#F4B942")
+    col_chart1, col_chart2 = st.columns(2)
+    with col_chart1:
+        st.caption(f"Maturity stage distribution ({recommended_name})")
+        st.bar_chart(recommended["predicted_class"].value_counts().reindex(CLASS_NAMES, fill_value=0), color="#3BA272")
+    with col_chart2:
+        st.caption("Commercial quality grade breakdown")
+        grade_order = ["Grade A (Premium)", "Grade B (Standard)", "Grade C (Processing)", "Reject / Rotten"]
+        st.bar_chart(recommended["quality_grade"].value_counts().reindex(grade_order, fill_value=0), color="#F4B942")
 
-        a, b, _ = st.columns([1, 1, 2])
-        a.download_button("Export all-pipeline CSV", records_csv(records), "all_pipeline_assessment.csv", "text/csv", width="stretch")
-            b.download_button("Export audit PDF report", records_pdf(records), "all_pipeline_assessment.pdf", "application/pdf", width="stretch")
+    a, b, _ = st.columns([1, 1, 2])
+    a.download_button("Export all-pipeline CSV", records_csv(records), "all_pipeline_assessment.csv", "text/csv", width="stretch")
+    b.download_button("Export audit PDF report", records_pdf(records), "all_pipeline_assessment.pdf", "application/pdf", width="stretch")
 
 
 def render_explanation(image: np.ndarray, record, px_cm: float) -> None:
@@ -213,11 +212,10 @@ def render_pipeline_tab(pipeline_name: str, pipeline_records, images: dict[str, 
     with visual_col:
         render_explanation(images[filename], record, px_cm)
 
-    with st.expander("📋 View Pipeline Result Ledger (Data Table) & Export", expanded=False):
-        st.subheader("Pipeline result ledger")
-        display_cols = ["filename", "predicted_class", "quality_grade", "confidence", "blemish_percent", "length_cm", "width_cm", "processing_time_ms"]
-        display = frame[[c for c in display_cols if c in frame.columns]]
-        st.dataframe(
+    st.subheader("Pipeline result ledger")
+    display_cols = ["filename", "predicted_class", "quality_grade", "confidence", "blemish_percent", "length_cm", "width_cm", "processing_time_ms"]
+    display = frame[[c for c in display_cols if c in frame.columns]]
+    st.dataframe(
         display.style.format(
             {
                 "confidence": "{:.1%}",
@@ -231,10 +229,10 @@ def render_pipeline_tab(pipeline_name: str, pipeline_records, images: dict[str, 
         width="stretch",
     )
 
-            a, b, _ = st.columns([1, 1, 2])
-        slug = pipeline_name.lower().replace(" ", "_").replace("+", "plus").replace("*", "")
-        a.download_button("Export pipeline CSV", records_csv(pipeline_records), f"{slug}_results.csv", "text/csv", key=f"csv_{slug}", width="stretch")
-        b.download_button(
+    a, b, _ = st.columns([1, 1, 2])
+    slug = pipeline_name.lower().replace(" ", "_").replace("+", "plus").replace("*", "")
+    a.download_button("Export pipeline CSV", records_csv(pipeline_records), f"{slug}_results.csv", "text/csv", key=f"csv_{slug}", width="stretch")
+    b.download_button(
         "Export detail PDF",
         records_pdf(pipeline_records, f"{pipeline_name} - Detailed Assessment Report"),
         f"{slug}_report.pdf",
@@ -253,7 +251,7 @@ def assessment_page(models, recommended_key: str) -> None:
         uploads = st.file_uploader("Or drop custom banana images here", type=["jpg", "jpeg", "png"], accept_multiple_files=True, help="Start with one image, then add more at any time.", key="assessment_uploads")
     with top_r:
         px_cm = st.slider("Spatial calibration (pixels / cm)", min_value=1.0, max_value=40.0, value=DEFAULT_PIXELS_PER_CM, step=0.5, help="Standardizes pixel dimensions to physical measurements in cm.")
-            st.caption("Commercial quality rules: Grade A (<5% spots), Grade B (5-15%), Grade C (15-30%), Reject (>30% or Rotten).")
+        st.caption("Commercial quality rules: Grade A (<5% spots), Grade B (5-15%), Grade C (15-30%), Reject (>30% or Rotten).")
 
     images, errors = {}, []
     if preset_choice and preset_choice in SAMPLE_PRESETS:
@@ -292,13 +290,15 @@ def assessment_page(models, recommended_key: str) -> None:
             progress.progress(completed / total, text=f"Completed {completed} of {total} assessments")
     progress.empty()
 
-    assessment_summary(all_records, models[recommended_key][0].display_name)
+    with st.expander("📊 Advanced Consensus Summary & Data Exports", expanded=False):
+        assessment_summary(all_records, models[recommended_key][0].display_name)
     st.divider()
 
-    tabs = st.tabs([pipeline.display_name for pipeline, _ in models.values()])
-    for tab, (pipeline, _), accent in zip(tabs, models.values(), PIPELINE_ACCENTS, strict=True):
-        with tab:
-            render_pipeline_tab(pipeline.display_name, [r for r in all_records if r.algorithm == pipeline.display_name], images, accent, px_cm)
+    with st.expander("🔍 Deep-Dive Pipeline Explorer (Masks & Overlays)", expanded=False):
+        tabs = st.tabs([pipeline.display_name for pipeline, _ in models.values()])
+        for tab, (pipeline, _), accent in zip(tabs, models.values(), PIPELINE_ACCENTS, strict=True):
+            with tab:
+                render_pipeline_tab(pipeline.display_name, [r for r in all_records if r.algorithm == pipeline.display_name], images, accent, px_cm)
 
 
 def video_analysis_page(models, recommended_key: str) -> None:
@@ -358,7 +358,7 @@ def video_analysis_page(models, recommended_key: str) -> None:
                         st.markdown(f"**Physical Dimensions:** `{geom.get('physical_length_cm', 0.0):.1f}cm × {geom.get('physical_width_cm', 0.0):.1f}cm`")
 
                 st.subheader("Complete frame ledger")
-                    st.dataframe(res.timeline_df, hide_index=True, width="stretch")
+                st.dataframe(res.timeline_df, hide_index=True, width="stretch")
                 st.download_button("Export video analysis CSV", res.timeline_df.to_csv(index=False).encode("utf-8"), "video_timeline_analysis.csv", "text/csv")
         else:
             st.info("Upload a video clip (e.g., MP4 conveyor recording) to execute real-time frame-by-frame analysis.")
@@ -519,16 +519,15 @@ def evaluation_page(summary, models) -> None:
 
     st.subheader("Benchmark leaderboard")
     percent_cols = ["Validation accuracy", "Test accuracy", "Macro-F1", "Weighted-F1", "Generalisation gap"]
-        st.dataframe(frame.style.format({x: "{:.2%}" for x in percent_cols}), hide_index=True, width="stretch")
+    st.dataframe(frame.style.format({x: "{:.2%}" for x in percent_cols}), hide_index=True, width="stretch")
     st.bar_chart(frame.set_index("Algorithm")[["Test accuracy", "Macro-F1", "Weighted-F1"]], color=["#3BA272", "#F4B942", "#5470C6"])
 
-    with st.expander("📚 Dataset balance and experimental protocol", expanded=False):
-        st.subheader("Dataset balance and experimental protocol")
-        split_frame = pd.DataFrame(summary.get("split_counts", {})).reindex(CLASS_NAMES).fillna(0).astype(int)
-        split_frame.index = [x.title() for x in split_frame.index]
-        left, right = st.columns([1.35, 1])
-        left.bar_chart(split_frame, color=["#28745A", "#E5A93D", "#5470C6"])
-        right.markdown(
+    st.subheader("Dataset balance and experimental protocol")
+    split_frame = pd.DataFrame(summary.get("split_counts", {})).reindex(CLASS_NAMES).fillna(0).astype(int)
+    split_frame.index = [x.title() for x in split_frame.index]
+    left, right = st.columns([1.35, 1])
+    left.bar_chart(split_frame, color=["#28745A", "#E5A93D", "#5470C6"])
+    right.markdown(
         f"**Ranking rule:** {summary.get('ranking_rule', 'Not recorded')}  \n"
         f"**Dataset:** `{summary.get('dataset', 'Not recorded')}`  \n"
         f"**Protocol:** fixed train, validation and held-out test splits; macro-F1 limits dominance by larger classes."
@@ -543,7 +542,7 @@ def evaluation_page(summary, models) -> None:
         st.pyplot(confusion_figure(item["test_metrics"]["confusion_matrix"], f"{selected}\nHeld-out test confusion matrix"), width="stretch")
     with class_col:
         st.caption("Class-level performance")
-            st.dataframe(report.style.format({"precision": "{:.3f}", "recall": "{:.3f}", "f1-score": "{:.3f}", "support": "{:.0f}"}), width="stretch")
+        st.dataframe(report.style.format({"precision": "{:.3f}", "recall": "{:.3f}", "f1-score": "{:.3f}", "support": "{:.0f}"}), width="stretch")
         st.bar_chart(report[["precision", "recall", "f1-score"]], color=["#5470C6", "#F4B942", "#3BA272"])
 
     if item["pipeline_key"] in models:
