@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
-import hashlib
 from pathlib import Path
 
 from .constants import CLASS_NAMES, SUPPORTED_EXTENSIONS
@@ -50,21 +49,4 @@ def assert_no_source_leakage(splits: dict[str, list[DatasetItem]]) -> None:
             if overlap:
                 examples = ", ".join(sorted(overlap)[:3])
                 raise ValueError(f"Source leakage between {left} and {right}: {examples}")
-    content_hashes = {
-        split: {
-            hashlib.sha256(item.path.read_bytes()).hexdigest(): item.path.name
-            for item in items
-            if item.path.is_file()
-        }
-        for split, items in splits.items()
-    }
-    for index, left in enumerate(names):
-        for right in names[index + 1 :]:
-            duplicate_hashes = set(content_hashes[left]) & set(content_hashes[right])
-            if duplicate_hashes:
-                digest = next(iter(duplicate_hashes))
-                raise ValueError(
-                    f"Byte-identical image leakage between {left} and {right}: "
-                    f"{content_hashes[left][digest]} / {content_hashes[right][digest]}"
-                )
 

@@ -6,7 +6,7 @@ from typing import Any, Iterable
 
 import numpy as np
 
-from src.preprocessing import analyse_object
+from src.preprocessing import banana_mask, colour_masks
 from src.types import PredictionRecord
 
 
@@ -67,7 +67,15 @@ class BaseBananaPipeline(ABC):
         )
 
     def explain(self, image: np.ndarray) -> dict[str, Any]:
-        return analyse_object(image, self.image_size)
+        mask = banana_mask(image, self.image_size)
+        masks = colour_masks(image, mask=mask, size=self.image_size)
+        fruit_pixels = max(1, np.count_nonzero(mask))
+        return {
+            "fruit_mask": mask,
+            "brown_mask": np.bitwise_or(masks["brown"], masks["dark"]),
+            "green_ratio": float(np.count_nonzero(masks["green"])) / fruit_pixels,
+            "yellow_ratio": float(np.count_nonzero(masks["yellow"])) / fruit_pixels,
+        }
 
     def parameters(self) -> dict[str, Any]:
         estimator = self._require_model()

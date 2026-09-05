@@ -7,9 +7,6 @@ A Streamlit application that compares four classical image-processing pipelines 
 - Four labels: `unripe`, `ripe`, `overripe`, and `rotten`.
 - Four pipelines: HSV segmentation + SVM, L\*a\*b\* K-Means + KNN, HSV histogram + Random Forest, and morphology/GLCM + Random Forest.
 - Single-image comparison, batch assessment, model evaluation dashboard, CSV export, and PDF export.
-- Bounded video ingestion with configurable frame sampling, live annotated predictions, temporal trend charts, and frame-level CSV/PDF exports.
-- Median denoising, CLAHE contrast enhancement, fruit segmentation, contour/bounding-box detection, aspect-ratio-preserving rectification, and optional physical calibration.
-- Surface-quality measurements including fruit-area, green/yellow coverage, and blemish-to-total-surface ratios.
 - Reproducible model manifests, immutable train/validation/test splits, leakage checks, and cached feature extraction.
 
 ## Set-up
@@ -38,7 +35,6 @@ Useful development options:
 ```
 
 The command writes versioned model bundles and evaluation data under `artifacts/`. The held-out test split is evaluated only after each pipeline is fitted and validated.
-Feature caches are invalidated automatically when a pipeline's feature version or image geometry changes.
 
 ## Run the dashboard
 
