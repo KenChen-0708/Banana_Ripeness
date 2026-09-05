@@ -6,7 +6,7 @@ A Streamlit application that compares four classical image-processing pipelines 
 
 - Four labels: `unripe`, `ripe`, `overripe`, and `rotten`.
 - Four pipelines: HSV segmentation + SVM, L\*a\*b\* K-Means + KNN, HSV histogram + Random Forest, and morphology/GLCM + Random Forest.
-- Single-image comparison, batch assessment, model evaluation dashboard, CSV export, and PDF export.
+- Single-image comparison, batch assessment, live camera assessment, model evaluation dashboard, CSV export, and PDF export.
 - Reproducible model manifests, immutable train/validation/test splits, leakage checks, and cached feature extraction.
 
 ## Set-up
@@ -41,6 +41,12 @@ The command writes versioned model bundles and evaluation data under `artifacts/
 ```powershell
 .venv\Scripts\python.exe -m streamlit run app.py
 ```
+
+## Live Assessment
+
+- **Image Capture** uses the browser camera to take one image. Review the preview, then choose **Confirm assessment** to run the same existing processing and trained-model flow used for uploaded files. Retake by capturing a new image.
+- **Real-Time Assessment** uses a browser WebRTC camera stream. Select a 1–5 second assessment interval, then use the camera panel's **Start**/**Stop** controls. Only sampled frames are assessed so the four existing pipelines remain responsive.
+- Browser camera access normally requires `localhost` during development or HTTPS after deployment. The app assumes one clearly visible banana and does not perform object detection.
 
 ## Test
 

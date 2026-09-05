@@ -4,7 +4,9 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from time import monotonic
 
+import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -12,6 +14,7 @@ import streamlit as st
 
 from src.constants import CLASS_NAMES, DEFAULT_ARTIFACT_DIR
 from src.exports import records_csv, records_dataframe, records_pdf
+from src.live_assessment import SampledFrameAssessor, assess_image
 from src.model_store import IncompatibleModelError, discover_bundles
 from src.pipelines import PIPELINE_CLASSES
 from src.preprocessing import ImageValidationError, decode_image, mask_overlay, resize_rgb
@@ -100,7 +103,7 @@ def confidence_label(value: float) -> str:
     return "High confidence" if value >= .8 else "Moderate confidence" if value >= .6 else "Manual review advised"
 
 
-def assessment_summary(records, recommended_name: str) -> None:
+def assessment_summary(records, recommended_name: str, key_prefix: str = "assessment") -> None:
     frame = records_dataframe(records)
     recommended = frame[frame["algorithm"] == recommended_name]
     agreement = frame.groupby("filename")["predicted_class"].nunique().eq(1).mean()
@@ -114,8 +117,8 @@ def assessment_summary(records, recommended_name: str) -> None:
     st.caption(f"Grade distribution · {recommended_name}")
     st.bar_chart(recommended["predicted_class"].value_counts().reindex(CLASS_NAMES, fill_value=0), color="#3BA272")
     a, b, _ = st.columns([1, 1, 2])
-    a.download_button("Export all-pipeline CSV", records_csv(records), "all_pipeline_assessment.csv", "text/csv", use_container_width=True)
-    b.download_button("Export summary PDF", records_pdf(records), "all_pipeline_assessment.pdf", "application/pdf", use_container_width=True)
+    a.download_button("Export all-pipeline CSV", records_csv(records), "all_pipeline_assessment.csv", "text/csv", key=f"{key_prefix}_all_csv", use_container_width=True)
+    b.download_button("Export summary PDF", records_pdf(records), "all_pipeline_assessment.pdf", "application/pdf", key=f"{key_prefix}_summary_pdf", use_container_width=True)
 
 
 def render_explanation(image: np.ndarray, record) -> None:
@@ -138,14 +141,14 @@ def render_explanation(image: np.ndarray, record) -> None:
         column.metric(label, f"{value:.1%}")
 
 
-def render_pipeline_tab(pipeline_name: str, pipeline_records, images: dict[str, np.ndarray], accent: str) -> None:
+def render_pipeline_tab(pipeline_name: str, pipeline_records, images: dict[str, np.ndarray], accent: str, key_prefix: str = "assessment") -> None:
     frame = records_dataframe(pipeline_records)
     metrics = st.columns(4)
     metrics[0].metric("Predictions", len(frame))
     metrics[1].metric("Average confidence", f"{frame['confidence'].mean():.1%}")
     metrics[2].metric("Average processing time", f"{frame['processing_time_ms'].mean():.1f} ms")
     metrics[3].metric("Review flags", int((frame["confidence"] < .6).sum()))
-    filename = st.selectbox("Inspect image", frame["filename"].tolist(), key=f"inspect_{pipeline_name}")
+    filename = st.selectbox("Inspect image", frame["filename"].tolist(), key=f"{key_prefix}_inspect_{pipeline_name}")
     record = next(item for item in pipeline_records if item.filename == filename)
     st.markdown(f'<div class="result-card" style="border-left-color:{accent}"><b>{filename}</b><br>Prediction: <b>{record.predicted_class.title()}</b> · {record.confidence:.1%} · {record.processing_time_ms:.1f} ms · {confidence_label(record.confidence)}</div>', unsafe_allow_html=True)
     probabilities = pd.DataFrame({"Class": [x.title() for x in CLASS_NAMES], "Probability": [record.probabilities.get(x, 0) for x in CLASS_NAMES]}).set_index("Class")
@@ -160,8 +163,21 @@ def render_pipeline_tab(pipeline_name: str, pipeline_records, images: dict[str, 
     st.dataframe(display.style.format({"confidence": "{:.1%}", "processing_time_ms": "{:.1f}"}), hide_index=True, use_container_width=True)
     a, b, _ = st.columns([1, 1, 2])
     slug = pipeline_name.lower().replace(" ", "_").replace("+", "plus").replace("*", "")
-    a.download_button("Export pipeline CSV", records_csv(pipeline_records), f"{slug}_results.csv", "text/csv", key=f"csv_{slug}", use_container_width=True)
-    b.download_button("Export detail PDF", records_pdf(pipeline_records, f"{pipeline_name} - Detailed Assessment Report"), f"{slug}_report.pdf", "application/pdf", key=f"pdf_{slug}", use_container_width=True)
+    a.download_button("Export pipeline CSV", records_csv(pipeline_records), f"{slug}_results.csv", "text/csv", key=f"{key_prefix}_csv_{slug}", use_container_width=True)
+    b.download_button("Export detail PDF", records_pdf(pipeline_records, f"{pipeline_name} - Detailed Assessment Report"), f"{slug}_report.pdf", "application/pdf", key=f"{key_prefix}_pdf_{slug}", use_container_width=True)
+
+
+def render_assessment_results(records, images: dict[str, np.ndarray], models, recommended_key: str, key_prefix: str) -> None:
+    """Render existing all-pipeline result UI for any image source."""
+    if not records:
+        return
+    assessment_summary(records, models[recommended_key][0].display_name, key_prefix)
+    st.divider()
+    tabs = st.tabs([pipeline.display_name for pipeline, _ in models.values()])
+    for tab, (pipeline, _), accent in zip(tabs, models.values(), PIPELINE_ACCENTS, strict=True):
+        with tab:
+            pipeline_records = [record for record in records if record.algorithm == pipeline.display_name]
+            render_pipeline_tab(pipeline.display_name, pipeline_records, images, accent, key_prefix)
 
 
 def assessment_page(models, recommended_key: str) -> None:
@@ -183,18 +199,127 @@ def assessment_page(models, recommended_key: str) -> None:
     all_records, completed = [], 0
     total = len(images) * len(models)
     progress = st.progress(0, text="Running all image-processing pipelines...")
-    for pipeline, _ in models.values():
-        for filename, image in images.items():
-            all_records.append(pipeline.predict(image, filename))
-            completed += 1
-            progress.progress(completed / total, text=f"Completed {completed} of {total} assessments")
+    for filename, image in images.items():
+        image_records = assess_image(models, image, filename)
+        all_records.extend(image_records)
+        completed += len(image_records)
+        progress.progress(completed / total, text=f"Completed {completed} of {total} assessments")
     progress.empty()
-    assessment_summary(all_records, models[recommended_key][0].display_name)
-    st.divider()
-    tabs = st.tabs([pipeline.display_name for pipeline, _ in models.values()])
-    for tab, (pipeline, _), accent in zip(tabs, models.values(), PIPELINE_ACCENTS, strict=True):
-        with tab:
-            render_pipeline_tab(pipeline.display_name, [r for r in all_records if r.algorithm == pipeline.display_name], images, accent)
+    render_assessment_results(all_records, images, models, recommended_key, "upload_assessment")
+
+
+def _captured_image_state() -> tuple[bytes | None, object | None]:
+    """Return the latest camera bytes and clear a stale confirmed result after a retake."""
+    captured = st.session_state.get("live_capture_input")
+    captured_bytes = captured.getvalue() if captured is not None else None
+    if captured_bytes != st.session_state.get("live_capture_confirmed_bytes"):
+        st.session_state.pop("live_capture_records", None)
+    return captured_bytes, captured
+
+
+def image_capture_page(models, recommended_key: str) -> None:
+    st.subheader("Image Capture")
+    st.caption("Capture one clearly visible banana, review the preview, then confirm the assessment.")
+    captured = st.camera_input("Capture a banana image", key="live_capture_input")
+    captured_bytes, captured = _captured_image_state()
+    if captured is None:
+        st.info("Allow camera access, centre one banana in the frame, and take a picture.")
+        return
+
+    try:
+        image = decode_image(captured_bytes)
+    except ImageValidationError as exc:
+        st.error(f"Captured image could not be used: {exc}")
+        return
+
+    st.image(image, caption="Captured image preview", use_container_width=True)
+    first, second, _ = st.columns([1, 1, 2])
+    if first.button("Confirm assessment", type="primary", key="confirm_live_capture", use_container_width=True):
+        with st.spinner("Running existing image-processing pipelines..."):
+            st.session_state["live_capture_records"] = assess_image(models, image, "captured_banana.jpg")
+            st.session_state["live_capture_confirmed_bytes"] = captured_bytes
+    second.caption("To retake, use the camera control above to capture a new image.")
+
+    records = st.session_state.get("live_capture_records", [])
+    if records and st.session_state.get("live_capture_confirmed_bytes") == captured_bytes:
+        render_assessment_results(records, {"captured_banana.jpg": image}, models, recommended_key, "capture")
+
+
+def _live_assessor(models, interval_seconds: float) -> SampledFrameAssessor:
+    current = st.session_state.get("live_frame_assessor")
+    if current is None or current["interval"] != interval_seconds:
+        st.session_state["live_frame_assessor"] = {
+            "interval": interval_seconds,
+            "assessor": SampledFrameAssessor(models, interval_seconds),
+        }
+    return st.session_state["live_frame_assessor"]["assessor"]
+
+
+def real_time_assessment_page(models, recommended_key: str) -> None:
+    st.subheader("Real-Time Assessment")
+    st.caption("Start the camera below. The system samples one frame at a time to keep all four existing pipelines responsive.")
+    interval_seconds = st.slider("Assessment interval (seconds)", 1.0, 5.0, 2.0, 0.5, key="live_interval")
+    assessor = _live_assessor(models, interval_seconds)
+    try:
+        from streamlit_webrtc import WebRtcMode, webrtc_streamer
+    except ImportError:
+        st.error("Live video support is unavailable. Install the project dependencies and restart Streamlit.")
+        st.code(".venv\\Scripts\\python.exe -m pip install -r requirements.txt", language="powershell")
+        return
+
+    def video_frame_callback(frame):
+        try:
+            bgr = frame.to_ndarray(format="bgr24")
+            assessor.submit(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))
+        except Exception as exc:
+            assessor.record_error(f"Camera frame could not be processed: {exc}")
+        return frame
+
+    try:
+        context = webrtc_streamer(
+            key="banana_live_assessment",
+            mode=WebRtcMode.SENDRECV,
+            video_frame_callback=video_frame_callback,
+            media_stream_constraints={"video": True, "audio": False},
+            async_processing=True,
+        )
+    except Exception as exc:
+        st.error(f"The live camera could not be started: {exc}")
+        return
+
+    if context.state.playing:
+        st.success("Live camera is running. Use the Stop control in the camera panel to end the stream.")
+    else:
+        st.info("Use Start in the camera panel and allow browser camera permission.")
+
+    @st.fragment(run_every="1s")
+    def render_live_snapshot() -> None:
+        snapshot = assessor.snapshot()
+        if snapshot.error:
+            st.error(snapshot.error)
+        elif snapshot.records and snapshot.image is not None:
+            age = max(0.0, monotonic() - (snapshot.captured_at or 0.0))
+            st.caption(f"Latest sampled frame: {age:.1f} seconds ago")
+            render_assessment_results(
+                list(snapshot.records),
+                {"live_camera_frame": snapshot.image},
+                models,
+                recommended_key,
+                "live",
+            )
+        elif context.state.playing:
+            st.info("Waiting for the first sampled camera frame...")
+
+    render_live_snapshot()
+
+
+def live_assessment_page(models, recommended_key: str) -> None:
+    hero("Live assessment", "Capture one banana image or assess sampled frames from a live camera feed.", "Camera assessment")
+    capture_tab, live_tab = st.tabs(["Image Capture", "Real-Time Assessment"])
+    with capture_tab:
+        image_capture_page(models, recommended_key)
+    with live_tab:
+        real_time_assessment_page(models, recommended_key)
 
 
 def confusion_figure(matrix, title: str):
@@ -317,7 +442,7 @@ def main() -> None:
     models = model_state()
     summary = load_evaluation(str(DEFAULT_ARTIFACT_DIR / "evaluation_summary.json"))
     st.sidebar.markdown("## 🍌 BananaVision")
-    page = st.sidebar.radio("Navigation", ["Assessment", "Model evaluation", "Model training"])
+    page = st.sidebar.radio("Navigation", ["Assessment", "Live Assessment", "Model evaluation", "Model training"])
     if not models:
         st.warning("No trained model bundles were found. Open Model training to configure the first run.")
         if page == "Model training": training_page(models)
@@ -326,6 +451,7 @@ def main() -> None:
     if recommended_key not in models: recommended_key = next(iter(models))
     st.sidebar.success(f"Recommended\n\n{models[recommended_key][0].display_name}")
     if page == "Assessment": assessment_page(models, recommended_key)
+    elif page == "Live Assessment": live_assessment_page(models, recommended_key)
     elif page == "Model evaluation": evaluation_page(summary, models)
     else: training_page(models)
 
