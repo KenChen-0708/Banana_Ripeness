@@ -114,6 +114,52 @@ def apply_theme() -> None:
         border-radius: 8px;
     }
     
+
+    /* Modern Header and Usage Banner */
+    .hero {
+        background: #0d1117;
+        border: 1px solid #21262d;
+        border-left: 4px solid #58a6ff;
+        border-radius: 10px;
+        padding: 18px 24px;
+        margin-bottom: 20px;
+    }
+    .hero h1 {
+        font-size: 1.8rem;
+        margin: 0;
+        color: #f0f6fc;
+    }
+    .hero p {
+        color: #8b949e;
+        margin: 6px 0 0 0;
+        font-size: 0.95rem;
+    }
+    .hero .eyebrow {
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: #58a6ff;
+    }
+    .guide-box {
+        background: #0d1117;
+        border: 1px solid #30363d;
+        border-radius: 8px;
+        padding: 14px 18px;
+        margin-bottom: 20px;
+    }
+    .guide-box h4 {
+        margin: 0 0 6px 0;
+        color: #58a6ff;
+        font-size: 1rem;
+    }
+    .section-desc {
+        color: #8b949e;
+        font-size: 0.88rem;
+        margin-bottom: 12px;
+        line-height: 1.4;
+    }
+
     .result-card {
         background-color: #0a0a0a;
         border: 1px solid #222;
@@ -143,6 +189,17 @@ def model_state():
         st.error(f"Models could not be loaded: {exc}")
         return {}
 
+
+
+def section_guide(title: str, rubric_context: str, how_to_use: str) -> None:
+    st.markdown(
+        f"""<div class="guide-box">
+            <h4>📘 {title}</h4>
+            <div class="section-desc"><b>🎯 Academic Purpose:</b> {rubric_context}</div>
+            <div class="section-desc"><b>💡 How to Test:</b> {how_to_use}</div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
 
 def hero(title: str, subtitle: str, eyebrow: str) -> None:
     st.markdown(
@@ -408,13 +465,19 @@ def video_analysis_page(models, recommended_key: str) -> None:
 
 
 def filter_lab_page(models) -> None:
-    hero("Preprocessing & filter lab", "Step-by-step classical image filtering, contrast stretching, morphology, and live blemish sensitivity tuning.", "Core image processing")
+    hero("Preprocessing & filter lab", "Interactive experimentation with classical filters, histogram equalization, morphology, and colour slicing.", "Core image processing")
+    section_guide(
+        "Preprocessing & Filter Lab Purpose",
+        "Demonstrates fundamental classical computer vision operations required by the course syllabus (spatial filtering, contrast enhancement, morphology, and color slicing).",
+        "Select an image preset, then interact with the real-time sliders in each of the 4 sections below to observe how different filters affect noise, edge preservation, and fruit mask accuracy."
+    )
 
     preset_name = st.selectbox("Select sample for filter experimentation", list(SAMPLE_PRESETS.keys()))
     image_path = PROJECT_ROOT / SAMPLE_PRESETS[preset_name]
     raw_image = decode_image(image_path)
 
-    st.subheader("1. Noise filtering & smoothing comparison")
+    st.subheader("1. Spatial Smoothing & Noise Suppression")
+    st.markdown("""<div class="section-desc"><b>Why this matters:</b> Packhouse cameras introduce high-frequency sensor noise. We compare Gaussian vs. Median vs. Bilateral filtering. Notice how the <b>Bilateral Filter</b> smooths the peel surface while keeping the boundary edges of brown necrotic spots sharp!</div>""", unsafe_allow_html=True)
     f_col1, f_col2, f_col3 = st.columns(3)
     with f_col1:
         g_k = st.slider("Gaussian kernel size", 3, 15, 5, step=2)
@@ -430,7 +493,8 @@ def filter_lab_page(models) -> None:
         bilateral_img = apply_bilateral_filter(raw_image, d=b_d)
         st.image(bilateral_img, caption=f"Bilateral Filter (d={b_d}) - Edge-preserving", width="stretch")
 
-    st.subheader("2. Contrast enhancement & histogram equalization")
+    st.subheader("2. Illumination Invariance & Contrast Enhancement")
+    st.markdown("""<div class="section-desc"><b>Why this matters:</b> Conveyor lighting can be uneven. Linear stretching standardizes dynamic range, while <b>CLAHE (Contrast Limited Adaptive Histogram Equalization)</b> amplifies subtle green-yellow hue boundaries without over-amplifying background noise.</div>""", unsafe_allow_html=True)
     c_col1, c_col2, c_col3 = st.columns(3)
     with c_col1:
         st.image(raw_image, caption="Original RGB input", width="stretch")
@@ -442,7 +506,8 @@ def filter_lab_page(models) -> None:
         clahe_img = apply_clahe(raw_image, clip_limit=clahe_clip)
         st.image(clahe_img, caption=f"CLAHE (Clip={clahe_clip}) - Adaptive Equalization", width="stretch")
 
-    st.subheader("3. Morphological operations & binary mask clean-up")
+    st.subheader("3. Mathematical Morphology & Binary Mask Refinement")
+    st.markdown("""<div class="section-desc"><b>Why this matters:</b> Initial color thresholding produces ragged edges and pinhole voids due to specular reflections. <b>Erosion</b> removes isolated dust pixels, <b>Dilation</b> expands boundaries, and <b>Closing</b> seals internal glare voids to create a solid banana mask.</div>""", unsafe_allow_html=True)
     m_cols = st.columns(4)
     base_mask = banana_mask(raw_image)
     with m_cols[0]:
@@ -457,7 +522,8 @@ def filter_lab_page(models) -> None:
         closed = apply_morphology(base_mask, op="close", kernel_size=7, iterations=2)
         st.image(closed, caption="Closing (Fills internal holes)", clamp=True, width="stretch")
 
-    st.subheader("4. Interactive blemish sensitivity & HSV threshold tuning")
+    st.subheader("4. Parametric HSV Color Slicing (Member A Blemish Detection)")
+    st.markdown("""<div class="section-desc"><b>Why this matters:</b> Member A's pipeline relies on extracting necrotic spots via HSV color thresholding. Tune the sliders below to calibrate the exact Hue range and Darkness (Value) threshold to isolate brown spots under different illumination conditions.</div>""", unsafe_allow_html=True)
     t_col1, t_col2 = st.columns([1, 2])
     with t_col1:
         brown_h_low = st.slider("Brown Hue Min", 0, 30, 3)
@@ -513,6 +579,11 @@ def confusion_figure(matrix, title: str):
 
 def evaluation_page(summary, models) -> None:
     hero("Model evaluation & leaderboard", "Compare held-out performance, macro-F1, and inspect class-level error matrices.", "Mode A: comparative study")
+    section_guide(
+        "Comparative Leaderboard & Benchmark Protocol",
+        "Directly answers the Mode A requirement: comparing the 4 individual member algorithms on a strictly separated held-out test split under balanced Macro-F1 and Accuracy metrics.",
+        "Inspect the leaderboard rankings, examine the class balance bar chart, and use the diagnostic explorer below to inspect the confusion matrix and precision/recall per maturity class."
+    )
     if not summary:
         st.warning("Run `scripts/train_compare.py` to generate evaluation results.")
         return
@@ -575,6 +646,11 @@ def evaluation_page(summary, models) -> None:
 
 def training_page(models) -> None:
     hero("Model training & reproducibility", "Configure training runs, feature caching, and reproduce held-out benchmarks.", "Pipeline training")
+    section_guide(
+        "Model Training & Scientific Reproducibility",
+        "Allows full re-training of all 4 pipelines on the dataset with automated feature extraction caching and parameter logging.",
+        "Select the pipelines you wish to train, configure the subset or full dataset, and click 'Start model training' to rebuild the models."
+    )
     options = {PIPELINE_CLASSES[key]().display_name: key for key in PIPELINE_CLASSES}
     with st.form("training_configuration"):
         selected = st.multiselect("Pipelines", list(options), default=list(options))
