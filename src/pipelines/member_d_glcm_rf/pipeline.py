@@ -1,3 +1,14 @@
+"""Member D Task: GLCM Texture Feature Extraction + Morphological Processing + Random Forest.
+
+Student: Lee Siu Yee
+Report Section: 2.3 Gray-Level Co-occurrence Matrix (GLCM) + Morphological Processing + Random Forest Classifier
+Algorithm Overview:
+    - Preprocessing: Grayscale conversion, morphological closing and opening for mask cleanup.
+    - Texture Analysis: Gray-Level Co-occurrence Matrix (GLCM) across 4 angles (0°, 45°, 90°, 135°) and 3 distances (1, 2, 4).
+    - Features: Contrast, Correlation, Energy, Homogeneity (mean and std) combined with morphological area, perimeter, and aspect ratio.
+    - Classification: 250-tree Random Forest Classifier with balanced class weights.
+"""
+
 from __future__ import annotations
 
 import cv2
@@ -6,9 +17,8 @@ from skimage.feature import graycomatrix, graycoprops
 from sklearn.ensemble import RandomForestClassifier
 
 from src.constants import RANDOM_STATE
+from src.pipelines.base import BaseBananaPipeline
 from src.preprocessing import banana_mask, resize_rgb
-
-from .base import BaseBananaPipeline
 
 
 class GLCMMorphologyRandomForestPipeline(BaseBananaPipeline):
@@ -16,6 +26,9 @@ class GLCMMorphologyRandomForestPipeline(BaseBananaPipeline):
     display_name = "Morphology + GLCM + Random Forest"
     feature_version = "glcm-morphology-v1"
     image_size = (128, 128)
+    member_name = "Lee Siu Yee"
+    task_description = "GLCM Texture Feature Extraction + Morphological Processing + Random Forest"
+    report_section = "Section 2.3"
 
     def extract_features(self, image: np.ndarray) -> np.ndarray:
         rgb = resize_rgb(image, self.image_size)
@@ -70,4 +83,3 @@ class GLCMMorphologyRandomForestPipeline(BaseBananaPipeline):
             n_jobs=-1,
             class_weight="balanced",
         )
-
