@@ -1,3 +1,15 @@
+"""Member B Task: K-Means Clustering in L*a*b* Colour Space + K-Nearest Neighbours.
+
+Student: Lim Tze Chuen
+Report Section: 2.2 K-Means Clustering with L*a*b* Colour Space and KNN Classifier
+Algorithm Overview:
+    - Preprocessing: Perceptual L*a*b* transformation and lightness separation.
+    - Color Space: CIE L*a*b* colour model for illumination-invariant chromaticity clustering.
+    - Clustering: K-Means (k=4) with K-Means++ initialisation to partition peel colour modes.
+    - Feature Extraction: Sorted cluster centres, cluster pixel weights, global L*a*b* means and standard deviations.
+    - Classification: Distance-weighted K-Nearest Neighbours (KNN, k=7) with StandardScaler.
+"""
+
 from __future__ import annotations
 
 import cv2
@@ -7,9 +19,8 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from src.constants import RANDOM_STATE
+from src.pipelines.base import BaseBananaPipeline
 from src.preprocessing import banana_mask, resize_rgb
-
-from .base import BaseBananaPipeline
 
 
 class LabKMeansKNNPipeline(BaseBananaPipeline):
@@ -18,6 +29,9 @@ class LabKMeansKNNPipeline(BaseBananaPipeline):
     feature_version = "lab-kmeans4-v1"
     image_size = (96, 96)
     cluster_count = 4
+    member_name = "Lim Tze Chuen"
+    task_description = "K-Means Clustering with L*a*b* Colour Space + K-Nearest Neighbours"
+    report_section = "Section 2.2"
 
     def extract_features(self, image: np.ndarray) -> np.ndarray:
         rgb = resize_rgb(image, self.image_size)
@@ -56,4 +70,3 @@ class LabKMeansKNNPipeline(BaseBananaPipeline):
                 ("classifier", KNeighborsClassifier(n_neighbors=7, weights="distance", n_jobs=-1)),
             ]
         )
-

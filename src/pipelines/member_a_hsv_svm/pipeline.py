@@ -1,3 +1,14 @@
+"""Member A Task: HSV Colour Segmentation + Brown Spot Ratio + Support Vector Machine.
+
+Student: Ronaldo Loh Yu Fei
+Report Section: 2.4 HSV Colour Segmentation + Brown Spot Ratio + Support Vector Machine Classifier
+Algorithm Overview:
+    - Preprocessing: Bounding box extraction and border-colour distance background elimination.
+    - Color Space: RGB to HSV transformation.
+    - Feature Extraction: Green, Yellow, Brown, and Dark surface ratio calculations + HSV statistical percentiles.
+    - Classification: Radial Basis Function (RBF) Support Vector Machine with StandardScaler.
+"""
+
 from __future__ import annotations
 
 import cv2
@@ -7,9 +18,8 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 
 from src.constants import RANDOM_STATE
+from src.pipelines.base import BaseBananaPipeline
 from src.preprocessing import banana_mask, colour_masks, resize_rgb
-
-from .base import BaseBananaPipeline
 
 
 class HSVSegmentationSVMPipeline(BaseBananaPipeline):
@@ -17,6 +27,9 @@ class HSVSegmentationSVMPipeline(BaseBananaPipeline):
     display_name = "HSV Segmentation + Brown Spot Ratio + SVM"
     feature_version = "hsv-ratios-statistics-v1"
     image_size = (224, 224)
+    member_name = "Ronaldo Loh Yu Fei"
+    task_description = "HSV Colour Segmentation + Brown Spot Ratio + Support Vector Machine"
+    report_section = "Section 2.4"
 
     def extract_features(self, image: np.ndarray) -> np.ndarray:
         rgb = resize_rgb(image, self.image_size)
@@ -52,4 +65,3 @@ class HSVSegmentationSVMPipeline(BaseBananaPipeline):
                 ),
             ]
         )
-
