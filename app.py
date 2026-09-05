@@ -188,7 +188,7 @@ def render_pipeline_tab(pipeline_name: str, pipeline_records, images: dict[str, 
     metrics[2].metric("Average processing time", f"{frame['processing_time_ms'].mean():.1f} ms")
     metrics[3].metric("Review flags", int((frame["confidence"] < 0.6).sum()))
 
-    filename = st.selectbox("Inspect image", frame["filename"].tolist(), key=f"inspect_{pipeline_name}")
+    filename = st.selectbox("Inspect image", frame["filename"].tolist(), index=len(frame)-1, key=f"inspect_{pipeline_name}")
     record = next(item for item in pipeline_records if item.filename == filename)
     grade = record.explanation.get("quality_grade", "Grade A (Premium)")
 
