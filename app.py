@@ -240,93 +240,96 @@ def assessment_summary(records, recommended_name: str) -> None:
     b.download_button("Export audit PDF report", records_pdf(records), "all_pipeline_assessment.pdf", "application/pdf", width="stretch")
 
 
-def render_explanation(image: np.ndarray, record, px_cm: float) -> None:
+def render_pipeline_tab(pipeline_name: str, pipeline_records, images: dict[str, np.ndarray], accent: str, px_cm: float) -> None:
+    frame = records_dataframe(pipeline_records)
+    
+    # If multiple images were uploaded, show image picker and batch stats
+    if len(frame) > 1:
+        top_col1, top_col2 = st.columns([1.5, 2])
+        with top_col1:
+            filename = st.selectbox("Select image to inspect", frame["filename"].tolist(), index=len(frame)-1, key=f"inspect_{pipeline_name}")
+        with top_col2:
+            b_cols = st.columns(3)
+            b_cols[0].metric("Total Images", len(frame))
+            b_cols[1].metric("Avg Confidence", f"{frame['confidence'].mean():.1%}")
+            b_cols[2].metric("Avg Speed", f"{frame['processing_time_ms'].mean():.1f} ms")
+    else:
+        filename = frame["filename"].iloc[0]
+
+    record = next(item for item in pipeline_records if item.filename == filename)
+    image = images[filename]
     explanation = record.explanation
     geometry = explanation.get("geometry") or calibrate_fruit_geometry(image, pixels_per_cm=px_cm)
     annotated = draw_annotated_geometry(image, geometry)
+    grade = explanation.get("quality_grade", "Grade A (Premium)")
 
-    st.markdown("##### 🔬 Computer Vision Diagnostic Masks & Spatial Analysis")
-    st.caption("Visual proof of classical image processing: Background segmentation, lesion masking, and geometric calibration.")
-    cols = st.columns(3)
-    with cols[0]:
-        st.image(annotated, caption="1. Spatial Calibration (MinAreaRect Bounding Box)", width="stretch")
-        st.caption("Measures real-world length & width (cm) calibrated by scale slider.")
-    with cols[1]:
-        st.image(explanation["fruit_mask"], caption="2. Binary Fruit Mask (Otsu + Morphology)", clamp=True, width="stretch")
-        st.caption("Isolates fruit body and removes noisy background artifacts.")
-    with cols[2]:
-        st.image(mask_overlay(image, explanation["brown_mask"]), caption="3. Necrotic Blemish Overlay (Peel Defect Slicing)", width="stretch")
-        st.caption("Segments brown spots to calculate peel surface damage ratio.")
+    # Clean 2-column layout: Left (Prediction & Analysis) vs Right (Computer Vision Proof)
+    left_col, right_col = st.columns([1.2, 1])
 
-    st.markdown("##### 📐 Physical Dimensions & Quality Grade Metrics")
-    gcols = st.columns(5)
-    gcols[0].metric("Physical Length", f"{geometry.get('physical_length_cm', 0.0):.1f} cm", help="Measured along principal curvature axis")
-    gcols[1].metric("Max Caliper Width", f"{geometry.get('physical_width_cm', 0.0):.1f} cm", help="Maximum transverse thickness")
-    gcols[2].metric("Surface Area", f"{geometry.get('physical_area_cm2', 0.0):.1f} cm²", help="Projected 2D surface area")
-    gcols[3].metric("Blemish Surface", f"{geometry.get('blemish_ratio', 0.0):.1%}", help="Necrotic spot pixels divided by fruit area")
-    gcols[4].metric("Commercial Grade", explanation.get("quality_grade", "Grade A (Premium)"), help="Export quality grade based on blemish percent")
+    with left_col:
+        st.markdown(f"#### 🍌 Fruit Assessment & Physical Geometry")
+        st.image(annotated, caption=f"Analyzed Sample: {filename}", width="stretch")
+        
+        # Clean 4-card metric summary
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Ripeness Stage", record.predicted_class.title())
+        m2.metric("Confidence", f"{record.confidence:.1%}")
+        m3.metric("Quality Grade", grade.split()[0] + " " + grade.split()[1] if " " in grade else grade)
+        m4.metric("Blemish Ratio", f"{geometry.get('blemish_ratio', 0.0):.1%}")
 
+        # Dimensions row
+        st.markdown(
+            f"""<div style="background:#111827; border:1px solid #1e293b; border-radius:8px; padding:10px 14px; margin-top:8px; font-size:0.88rem; color:#94a3b8;">
+            <b>Physical Geometry:</b> Length: <span style="color:#38bdf8;">{geometry.get('physical_length_cm', 0.0):.1f} cm</span> | 
+            Max Caliper Width: <span style="color:#38bdf8;">{geometry.get('physical_width_cm', 0.0):.1f} cm</span> | 
+            Area: <span style="color:#38bdf8;">{geometry.get('physical_area_cm2', 0.0):.1f} cm²</span> | 
+            Inference Time: <span style="color:#34d399;">{record.processing_time_ms:.1f} ms</span>
+            </div>""",
+            unsafe_allow_html=True
+        )
 
-def render_pipeline_tab(pipeline_name: str, pipeline_records, images: dict[str, np.ndarray], accent: str, px_cm: float) -> None:
-    frame = records_dataframe(pipeline_records)
-    metrics = st.columns(4)
-    metrics[0].metric("Predictions", len(frame))
-    metrics[1].metric("Average confidence", f"{frame['confidence'].mean():.1%}")
-    metrics[2].metric("Average processing time", f"{frame['processing_time_ms'].mean():.1f} ms")
-    metrics[3].metric("Review flags", int((frame["confidence"] < 0.6).sum()))
+    with right_col:
+        st.markdown(f"#### 🔬 Computer Vision Diagnostic Masks")
+        mask_col1, mask_col2 = st.columns(2)
+        with mask_col1:
+            st.image(explanation["fruit_mask"], caption="Binary Fruit Mask (Otsu)", clamp=True, width="stretch")
+        with mask_col2:
+            st.image(mask_overlay(image, explanation["brown_mask"]), caption="Necrotic Lesion Overlay", width="stretch")
 
-    filename = st.selectbox("Inspect image", frame["filename"].tolist(), index=len(frame)-1, key=f"inspect_{pipeline_name}")
-    record = next(item for item in pipeline_records if item.filename == filename)
-    grade = record.explanation.get("quality_grade", "Grade A (Premium)")
+        st.markdown("##### 📊 Class Probability Profile")
+        probabilities = pd.DataFrame(
+            {"Class": [x.title() for x in CLASS_NAMES], "Probability": [record.probabilities.get(x, 0) for x in CLASS_NAMES]}
+        ).set_index("Class")
+        st.bar_chart(probabilities, color=accent, height=180)
 
-    st.markdown(
-        f'<div class="result-card" style="border-left-color:{accent}">'
-        f"<b>{filename}</b><br>"
-        f"Ripeness: <b>{record.predicted_class.title()}</b> | Commercial Grade: <b>{grade}</b> · "
-        f"{record.confidence:.1%} · {record.processing_time_ms:.1f} ms · {confidence_label(record.confidence)}</div>",
-        unsafe_allow_html=True,
-    )
-
-    probabilities = pd.DataFrame(
-        {"Class": [x.title() for x in CLASS_NAMES], "Probability": [record.probabilities.get(x, 0) for x in CLASS_NAMES]}
-    ).set_index("Class")
-
-    chart_col, visual_col = st.columns([0.75, 1.75])
-    with chart_col:
-        st.caption("Class probability profile")
-        st.bar_chart(probabilities, color=accent)
-        st.caption(f"Green ratio: {record.explanation.get('green_ratio', 0):.1%} | Yellow ratio: {record.explanation.get('yellow_ratio', 0):.1%}")
-    with visual_col:
-        render_explanation(images[filename], record, px_cm)
-
-    st.subheader("Pipeline result ledger")
-    display_cols = ["filename", "predicted_class", "quality_grade", "confidence", "blemish_percent", "length_cm", "width_cm", "processing_time_ms"]
-    display = frame[[c for c in display_cols if c in frame.columns]]
-    st.dataframe(
-        display.style.format(
-            {
-                "confidence": "{:.1%}",
-                "blemish_percent": "{:.1f}%",
-                "length_cm": "{:.1f} cm",
-                "width_cm": "{:.1f} cm",
-                "processing_time_ms": "{:.1f}",
-            }
-        ),
-        hide_index=True,
-        width="stretch",
-    )
-
-    a, b, _ = st.columns([1, 1, 2])
-    slug = pipeline_name.lower().replace(" ", "_").replace("+", "plus").replace("*", "")
-    a.download_button("Export pipeline CSV", records_csv(pipeline_records), f"{slug}_results.csv", "text/csv", key=f"csv_{slug}", width="stretch")
-    b.download_button(
-        "Export detail PDF",
-        records_pdf(pipeline_records, f"{pipeline_name} - Detailed Assessment Report"),
-        f"{slug}_report.pdf",
-        "application/pdf",
-        key=f"pdf_{slug}",
-        width="stretch",
-    )
+    # Optional Ledger tucked in expander
+    with st.expander("📋 View Raw Results Ledger & Export Reports", expanded=False):
+        display_cols = ["filename", "predicted_class", "quality_grade", "confidence", "blemish_percent", "length_cm", "width_cm", "processing_time_ms"]
+        display = frame[[c for c in display_cols if c in frame.columns]]
+        st.dataframe(
+            display.style.format(
+                {
+                    "confidence": "{:.1%}",
+                    "blemish_percent": "{:.1f}%",
+                    "length_cm": "{:.1f} cm",
+                    "width_cm": "{:.1f} cm",
+                    "processing_time_ms": "{:.1f}",
+                }
+            ),
+            hide_index=True,
+            width="stretch",
+        )
+        a, b, _ = st.columns([1, 1, 2])
+        slug = pipeline_name.lower().replace(" ", "_").replace("+", "plus").replace("*", "")
+        a.download_button("Export pipeline CSV", records_csv(pipeline_records), f"{slug}_results.csv", "text/csv", key=f"csv_{slug}", width="stretch")
+        b.download_button(
+            "Export detail PDF",
+            records_pdf(pipeline_records, f"{pipeline_name} - Detailed Assessment Report"),
+            f"{slug}_report.pdf",
+            "application/pdf",
+            key=f"pdf_{slug}",
+            width="stretch",
+        )
 
 
 def assessment_page(models, recommended_key: str) -> None:
