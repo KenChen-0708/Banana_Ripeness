@@ -50,102 +50,76 @@ def apply_theme() -> None:
     st.markdown(
         """
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
     
     html, body, [class*="css"] {
         font-family: 'Inter', sans-serif;
     }
     
+    /* Strict Black Background */
     .stApp {
-        background-color: #0b0f19;
-    }
-    
-    h1, h2, h3 {
-        font-family: 'Inter', sans-serif;
-        font-weight: 800;
-        background: -webkit-linear-gradient(45deg, #00d2ff, #3a7bd5);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        letter-spacing: -0.02em;
+        background-color: #000000;
     }
     
     [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #111827, #0b0f19);
-        border-right: 1px solid rgba(255, 255, 255, 0.05);
+        background-color: #0a0a0a;
+        border-right: 1px solid #222;
     }
     
+    /* Elegant Navigation Bar (Sidebar Radio Buttons) */
+    [data-testid="stSidebar"] [role="radiogroup"] label {
+        border-radius: 8px;
+        padding: 10px 14px;
+        margin: 4px 0;
+        transition: background-color 0.2s ease;
+        cursor: pointer;
+    }
+    [data-testid="stSidebar"] [role="radiogroup"] label:hover {
+        background-color: #1a1a1a;
+    }
+    [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) {
+        background-color: #222222;
+        border-left: 3px solid #ffffff;
+    }
+    [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) * {
+        color: #ffffff !important;
+        font-weight: 600;
+    }
+    
+    /* Clean Metrics */
     div[data-testid="stMetric"] {
-        background: linear-gradient(145deg, #1e293b, #0f172a);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 16px;
-        padding: 20px;
-        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
-    }
-    
-    div[data-testid="stMetric"] label {
-        color: #94a3b8 !important;
-        font-weight: 600;
-    }
-    
-    .stButton>button[kind="primary"] {
-        background: linear-gradient(90deg, #3b82f6, #8b5cf6);
-        color: white;
-        border-radius: 8px;
-        border: none;
-        font-weight: 600;
-        letter-spacing: 0.05em;
-        transition: all 0.3s ease;
-    }
-    .stButton>button[kind="primary"]:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4);
-    }
-    
-    .stButton>button[kind="secondary"] {
-        background: #1e293b;
-        color: #cbd5e1;
-        border: 1px solid #334155;
-        border-radius: 8px;
-        transition: all 0.3s ease;
-    }
-    .stButton>button[kind="secondary"]:hover {
-        border-color: #3b82f6;
-        color: white;
-    }
-    
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 12px;
-        background: #0f172a;
+        background-color: #0a0a0a;
+        border: 1px solid #222;
         border-radius: 12px;
-        padding: 8px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        color: #94a3b8;
-        background: #1e293b;
-        border-radius: 8px;
-        padding: 10px 20px;
-        border: 1px solid transparent;
-    }
-    .stTabs [aria-selected="true"] {
-        background: linear-gradient(90deg, #1d4ed8, #4338ca);
-        color: white !important;
-        border-color: rgba(255,255,255,0.2);
+        padding: 16px;
     }
     
+    /* Clean Buttons */
+    .stButton>button {
+        border-radius: 6px;
+        border: 1px solid #333;
+        background-color: #111;
+        transition: all 0.2s ease;
+    }
+    .stButton>button:hover {
+        border-color: #666;
+        background-color: #222;
+        color: white;
+    }
+    
+    /* Expanders */
     [data-testid="stExpander"] {
-        background: #111827;
-        border-radius: 12px;
-        border: 1px solid #1f2937;
+        background-color: #0a0a0a;
+        border: 1px solid #222;
+        border-radius: 8px;
     }
     
     .result-card {
-        background: #1e293b;
-        border: 1px solid #334155;
-        border-radius: 12px;
-        padding: 20px;
+        background-color: #0a0a0a;
+        border: 1px solid #222;
+        border-radius: 10px;
+        padding: 16px;
         margin: 10px 0;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-        color: #e2e8f0;
     }
     </style>
     """,
