@@ -243,16 +243,8 @@ def assessment_summary(records, recommended_name: str) -> None:
 def render_pipeline_tab(pipeline_name: str, pipeline_records, images: dict[str, np.ndarray], accent: str, px_cm: float) -> None:
     frame = records_dataframe(pipeline_records)
     
-    # If multiple images were uploaded, show image picker and batch stats
     if len(frame) > 1:
-        top_col1, top_col2 = st.columns([1.5, 2])
-        with top_col1:
-            filename = st.selectbox("Select image to inspect", frame["filename"].tolist(), index=len(frame)-1, key=f"inspect_{pipeline_name}")
-        with top_col2:
-            b_cols = st.columns(3)
-            b_cols[0].metric("Total Images", len(frame))
-            b_cols[1].metric("Avg Confidence", f"{frame['confidence'].mean():.1%}")
-            b_cols[2].metric("Avg Speed", f"{frame['processing_time_ms'].mean():.1f} ms")
+        filename = st.selectbox("Select image to inspect", frame["filename"].tolist(), index=len(frame)-1, key=f"inspect_{pipeline_name}")
     else:
         filename = frame["filename"].iloc[0]
 
@@ -263,47 +255,38 @@ def render_pipeline_tab(pipeline_name: str, pipeline_records, images: dict[str, 
     annotated = draw_annotated_geometry(image, geometry)
     grade = explanation.get("quality_grade", "Grade A (Premium)")
 
-    # Clean 2-column layout: Left (Prediction & Analysis) vs Right (Computer Vision Proof)
-    left_col, right_col = st.columns([1.2, 1])
+    # 1. Three neatly aligned images across 3 equal columns
+    st.markdown("##### 🔬 Computer Vision Diagnostic Stages")
+    img_c1, img_c2, img_c3 = st.columns(3)
+    with img_c1:
+        st.image(annotated, caption="1. Spatial Calibration (MinAreaRect)", width="stretch")
+    with img_c2:
+        st.image(explanation["fruit_mask"], caption="2. Binary Fruit Mask (Otsu)", clamp=True, width="stretch")
+    with img_c3:
+        st.image(mask_overlay(image, explanation["brown_mask"]), caption="3. Necrotic Blemish Mask", width="stretch")
 
-    with left_col:
-        st.markdown(f"#### 🍌 Fruit Assessment & Physical Geometry")
-        st.image(annotated, caption=f"Analyzed Sample: {filename}", width="stretch")
-        
-        # Clean 4-card metric summary
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Ripeness Stage", record.predicted_class.title())
-        m2.metric("Confidence", f"{record.confidence:.1%}")
-        m3.metric("Quality Grade", grade.split()[0] + " " + grade.split()[1] if " " in grade else grade)
-        m4.metric("Blemish Ratio", f"{geometry.get('blemish_ratio', 0.0):.1%}")
+    # 2. Balanced Metrics and Probability Chart
+    stat_c1, stat_c2 = st.columns([1.3, 1])
+    with stat_c1:
+        st.markdown("##### 📐 Physical Dimensions & Quality Metrics")
+        m_row1 = st.columns(2)
+        m_row1[0].metric("Ripeness Stage", record.predicted_class.title(), f"{record.confidence:.1%} confidence")
+        m_row1[1].metric("Commercial Export Grade", grade, f"{geometry.get('blemish_ratio', 0.0):.1%} blemish")
 
-        # Dimensions row
-        st.markdown(
-            f"""<div style="background:#111827; border:1px solid #1e293b; border-radius:8px; padding:10px 14px; margin-top:8px; font-size:0.88rem; color:#94a3b8;">
-            <b>Physical Geometry:</b> Length: <span style="color:#38bdf8;">{geometry.get('physical_length_cm', 0.0):.1f} cm</span> | 
-            Max Caliper Width: <span style="color:#38bdf8;">{geometry.get('physical_width_cm', 0.0):.1f} cm</span> | 
-            Area: <span style="color:#38bdf8;">{geometry.get('physical_area_cm2', 0.0):.1f} cm²</span> | 
-            Inference Time: <span style="color:#34d399;">{record.processing_time_ms:.1f} ms</span>
-            </div>""",
-            unsafe_allow_html=True
-        )
+        m_row2 = st.columns(3)
+        m_row2[0].metric("Length", f"{geometry.get('physical_length_cm', 0.0):.1f} cm")
+        m_row2[1].metric("Max Width", f"{geometry.get('physical_width_cm', 0.0):.1f} cm")
+        m_row2[2].metric("Surface Area", f"{geometry.get('physical_area_cm2', 0.0):.1f} cm²")
 
-    with right_col:
-        st.markdown(f"#### 🔬 Computer Vision Diagnostic Masks")
-        mask_col1, mask_col2 = st.columns(2)
-        with mask_col1:
-            st.image(explanation["fruit_mask"], caption="Binary Fruit Mask (Otsu)", clamp=True, width="stretch")
-        with mask_col2:
-            st.image(mask_overlay(image, explanation["brown_mask"]), caption="Necrotic Lesion Overlay", width="stretch")
-
+    with stat_c2:
         st.markdown("##### 📊 Class Probability Profile")
         probabilities = pd.DataFrame(
             {"Class": [x.title() for x in CLASS_NAMES], "Probability": [record.probabilities.get(x, 0) for x in CLASS_NAMES]}
         ).set_index("Class")
-        st.bar_chart(probabilities, color=accent, height=180)
+        st.bar_chart(probabilities, color=accent, height=170)
 
-    # Optional Ledger tucked in expander
-    with st.expander("📋 View Raw Results Ledger & Export Reports", expanded=False):
+    # 3. Data Ledger Expander
+    with st.expander("📋 View Data Table Ledger & Export Reports", expanded=False):
         display_cols = ["filename", "predicted_class", "quality_grade", "confidence", "blemish_percent", "length_cm", "width_cm", "processing_time_ms"]
         display = frame[[c for c in display_cols if c in frame.columns]]
         st.dataframe(
@@ -381,36 +364,31 @@ def assessment_page(models, recommended_key: str) -> None:
     progress.empty()
 
     # --- Instant Side-by-Side Model Comparison ---
-    st.markdown("### 🍌 Instant Algorithm Comparison (Mode A)")
-    st.markdown(
-        """<div class="guide-box">
-            <b>How to read this comparison:</b> Each column displays how one team member's computer vision pipeline 
-            classified this exact image. Notice differences in confidence scores and predictions between color-based approaches 
-            (Members A, B, C) versus texture-based analysis (Member D).
-        </div>""",
-        unsafe_allow_html=True
-    )
-
-    # Find the most recently inspected image
     latest_img_name = list(images.keys())[-1]
-    active_img = images[latest_img_name]
-
-    col_img, col_preds = st.columns([1, 2.5])
-    with col_img:
-        st.image(active_img, caption=f"Active Sample: {latest_img_name}", width="stretch")
-    with col_preds:
-        st.caption("Side-by-side predictions for active image:")
-        m_cols = st.columns(len(models))
-        for idx, (m_key, (p_obj, _)) in enumerate(models.items()):
-            rec_match = next((r for r in all_records if r.algorithm == p_obj.display_name and r.filename == latest_img_name), None)
-            with m_cols[idx]:
-                is_best = (m_key == recommended_key)
-                tag = "⭐ Best Model" if is_best else f"Member {chr(65+idx)}"
-                st.markdown(f"**{tag}**<br><small>{p_obj.display_name}</small>", unsafe_allow_html=True)
-                if rec_match:
-                    st.metric("Ripeness", rec_match.predicted_class.title())
-                    st.caption(f"Confidence: **{rec_match.confidence:.1%}**")
-                    st.caption(f"Latency: **{rec_match.processing_time_ms:.1f}ms**")
+    st.markdown(f"### 🍌 Instant Algorithm Comparison (Mode A) — `{latest_img_name}`")
+    
+    # 4 balanced horizontal prediction cards spanning the screen evenly
+    m_cols = st.columns(len(models))
+    for idx, (m_key, (p_obj, _)) in enumerate(models.items()):
+        rec_match = next((r for r in all_records if r.algorithm == p_obj.display_name and r.filename == latest_img_name), None)
+        with m_cols[idx]:
+            is_best = (m_key == recommended_key)
+            tag = "⭐ Recommended Model" if is_best else f"Member {chr(65+idx)}"
+            accent = PIPELINE_ACCENTS[idx % len(PIPELINE_ACCENTS)]
+            pred_text = rec_match.predicted_class.title() if rec_match else "N/A"
+            conf_text = f"{rec_match.confidence:.1%}" if rec_match else "N/A"
+            speed_text = f"{rec_match.processing_time_ms:.1f} ms" if rec_match else "N/A"
+            
+            st.markdown(
+                f"""<div style="background:#111827; border:1px solid #1e293b; border-top:3px solid {accent}; border-radius:10px; padding:16px; text-align:center;">
+                    <div style="font-size:0.75rem; font-weight:700; color:{accent}; text-transform:uppercase;">{tag}</div>
+                    <div style="font-size:0.85rem; color:#94a3b8; margin-bottom:8px;">{p_obj.display_name}</div>
+                    <div style="font-size:1.5rem; font-weight:800; color:#ffffff; margin:4px 0;">{pred_text}</div>
+                    <div style="font-size:0.82rem; color:#cbd5e1;">Confidence: <b>{conf_text}</b></div>
+                    <div style="font-size:0.78rem; color:#64748b;">Inference: {speed_text}</div>
+                </div>""",
+                unsafe_allow_html=True
+            )
 
     st.divider()
 
