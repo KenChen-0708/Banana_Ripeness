@@ -35,3 +35,6 @@ artifacts_smoke/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Assignment report copy
+Copy of Image Processing Assignment Report.docx

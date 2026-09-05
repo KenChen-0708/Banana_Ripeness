@@ -25,7 +25,13 @@ class HSVSegmentationSVMPipeline(BaseBananaPipeline):
         masks = colour_masks(image, mask=mask, size=self.image_size)
         fruit = mask > 0
         count = max(1, int(np.count_nonzero(fruit)))
-        ratios = [float(np.count_nonzero(masks[name])) / count for name in ("green", "yellow", "brown", "dark")]
+        green_ratio = float(np.count_nonzero(masks["green"])) / count
+        yellow_ratio = float(np.count_nonzero(masks["yellow"])) / count
+        # Brown spot ratio follows the assignment-report definition: detected brown
+        # fruit pixels divided by all detected fruit pixels. Dark pixels remain a
+        # separate feature because they can represent shadow or severe deterioration.
+        brown_spot_ratio = float(np.count_nonzero(masks["brown"])) / count
+        dark_ratio = float(np.count_nonzero(masks["dark"])) / count
         pixels = hsv[fruit]
         if not pixels.size:
             pixels = hsv.reshape(-1, 3)
@@ -33,7 +39,28 @@ class HSVSegmentationSVMPipeline(BaseBananaPipeline):
         stds = pixels.std(axis=0) / np.array([180.0, 255.0, 255.0])
         percentiles = np.percentile(pixels[:, 2], [10, 50, 90]) / 255.0
         area_ratio = count / mask.size
-        return np.asarray([*ratios, *means, *stds, *percentiles, area_ratio], dtype=np.float32)
+        return np.asarray(
+            [
+                green_ratio,
+                yellow_ratio,
+                brown_spot_ratio,
+                dark_ratio,
+                *means,
+                *stds,
+                *percentiles,
+                area_ratio,
+            ],
+            dtype=np.float32,
+        )
+
+    def explain(self, image: np.ndarray) -> dict[str, np.ndarray | float]:
+        explanation = super().explain(image)
+        mask = explanation["fruit_mask"]
+        masks = colour_masks(image, mask=mask, size=self.image_size)
+        fruit_pixels = max(1, int(np.count_nonzero(mask)))
+        explanation["brown_spot_ratio"] = float(np.count_nonzero(masks["brown"])) / fruit_pixels
+        explanation["dark_ratio"] = float(np.count_nonzero(masks["dark"])) / fruit_pixels
+        return explanation
 
     def build_estimator(self) -> Pipeline:
         return Pipeline(

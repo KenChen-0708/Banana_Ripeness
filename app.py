@@ -125,9 +125,17 @@ def render_explanation(image: np.ndarray, record) -> None:
     cols[0].image(original, caption="Standardised RGB input", use_container_width=True)
     cols[1].image(explanation["fruit_mask"], caption="Detected fruit region", clamp=True, use_container_width=True)
     cols[2].image(mask_overlay(original, explanation["brown_mask"]), caption="Blemish / dark-region overlay", use_container_width=True)
-    ratios = st.columns(2)
-    ratios[0].metric("Green surface ratio", f"{explanation.get('green_ratio', 0):.1%}")
-    ratios[1].metric("Yellow surface ratio", f"{explanation.get('yellow_ratio', 0):.1%}")
+    ratio_values = [
+        ("Green surface ratio", explanation.get("green_ratio", 0)),
+        ("Yellow surface ratio", explanation.get("yellow_ratio", 0)),
+    ]
+    if "brown_spot_ratio" in explanation:
+        ratio_values.append(("Brown spot ratio", explanation["brown_spot_ratio"]))
+    if "dark_ratio" in explanation:
+        ratio_values.append(("Dark-region ratio", explanation["dark_ratio"]))
+    ratios = st.columns(len(ratio_values))
+    for column, (label, value) in zip(ratios, ratio_values, strict=True):
+        column.metric(label, f"{value:.1%}")
 
 
 def render_pipeline_tab(pipeline_name: str, pipeline_records, images: dict[str, np.ndarray], accent: str) -> None:
