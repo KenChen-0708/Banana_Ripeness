@@ -47,62 +47,110 @@ PIPELINE_ACCENTS = ["#F4B942", "#3BA272", "#5470C6", "#9A60B4"]
 
 
 def apply_theme() -> None:
-    return
     st.markdown(
         """
     <style>
-    :root {--forest:#173b2d;--forest-2:#245b45;--leaf:#3f7d5c;--sage:#d2e2ce;
-      --sage-light:#e8f0df;--sage-mid:#bdd3b8;--gold:#c69214;--cream:#f2e7c9}
-    html,body,[data-testid="stAppViewContainer"],.stApp {
-      color:var(--forest);background:#fff}
-    [data-testid="stHeader"] {background:rgba(255,255,255,.92)}
-    [data-testid="stSidebar"] {background:linear-gradient(180deg,#173b2d,#245b45)}
-    [data-testid="stSidebar"] * {color:#e8f0df}
-    h1,h2,h3,h4,h5,h6,p,label,[data-testid="stCaptionContainer"] {color:var(--forest);letter-spacing:-.012em}
-    h1,h2,h3 {letter-spacing:-.025em}
-    div[data-testid="stMetric"] {background:linear-gradient(135deg,#d2e2ce,#e7dfbd);color:var(--forest);
-      border:1px solid #9ebc9a;border-radius:16px;padding:16px;box-shadow:0 8px 24px rgba(24,74,53,.12)}
-    div[data-testid="stMetric"] * {color:var(--forest)}
-    .hero {padding:24px;border-radius:22px;color:#e8f0df;background:linear-gradient(115deg,#123b2d,#28745a 62%,#b88612);margin-bottom:20px}
-    .hero h1,.hero p,.hero .eyebrow {color:#e8f0df}
-    .hero p {opacity:.88;margin:.25rem 0 0}.eyebrow{text-transform:uppercase;letter-spacing:.14em;font-size:.72rem;font-weight:700;opacity:.78}
-    .result-card {color:var(--forest);background:linear-gradient(120deg,#dce9d5,#eee2bd);border:1px solid #a5c0a1;border-left:5px solid #3f7d5c;border-radius:14px;padding:16px;margin:8px 0}
-    .stTabs [data-baseweb="tab-list"] {gap:8px;background:#bdd3b8;border-radius:14px;padding:8px}
-    .stTabs [data-baseweb="tab"] {color:var(--forest);background:#dce9d5;border-radius:10px;padding:10px 16px}
-    .stTabs [aria-selected="true"] {color:#e8f0df;background:#245b45!important}
-    .stTabs [aria-selected="true"] * {color:#e8f0df!important}
-    [data-testid="stFileUploaderDropzone"],form,[data-testid="stExpander"],
-    [data-testid="stDataFrame"],div[data-baseweb="select"]>div,
-    [data-baseweb="input"]>div,[data-baseweb="textarea"]>div {
-      color:var(--forest);background:#dce9d5!important;border-color:#9ebc9a!important;border-radius:14px}
-    [data-testid="stFileUploaderDropzone"] {padding:20px!important}
-    form {padding:20px!important}
-    [data-testid="stExpander"] details>summary {padding:14px 16px!important}
-    [data-testid="stFileUploaderDropzone"] * ,[data-testid="stExpander"] * {color:var(--forest)}
-    input,textarea,[role="listbox"],[role="option"] {color:var(--forest)!important;background:#e7dfbd!important}
-    [data-baseweb="popover"],[data-baseweb="menu"] {color:var(--forest)!important;background:#e7dfbd!important}
-    [data-baseweb="popover"] * ,[data-baseweb="menu"] * {color:var(--forest)!important}
-    button[kind="secondary"],button[kind="primary"],.stDownloadButton button {
-      color:#fff!important;background:#245b45!important;border:1px solid #3f7d5c!important;border-radius:10px!important}
-    button[kind="secondary"] *,button[kind="primary"] *,.stDownloadButton button * {
-      color:#fff!important;fill:#fff!important}
-    button[kind="secondary"]:hover,button[kind="primary"]:hover,.stDownloadButton button:hover {background:#b88612!important;border-color:#8c670e!important}
-    [data-testid="stAlert"] {color:var(--forest);background:#e7dfbd;border:1px solid #c69214;padding:16px;border-radius:12px}
-    [data-testid="stAlert"] * {color:var(--forest)}
-    [data-testid="stProgressBar"]>div>div {background:#c69214}
-    hr {border-color:#9ebc9a}
-    [data-testid="stVegaLiteChart"],[data-testid="stArrowVegaLiteChart"],
-    [data-testid="stImage"],.stPlotlyChart {background:#dce9d5;border:1px solid #a5c0a1;border-radius:14px;padding:12px}
-    [data-testid="stDataFrame"] {overflow:hidden;box-shadow:0 8px 20px rgba(23,59,45,.08)}
-    [data-testid="stSidebar"] [role="radiogroup"] label {border-radius:10px;padding:.45rem .6rem;margin:.18rem 0}
-    [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) {background:#e7dfbd}
-    [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) * {color:var(--forest)!important}
-    [data-testid="stTooltipContent"] {color:#e8f0df!important;background:#173b2d!important}
-    </style>""",
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+    
+    html, body, [class*="css"] {
+        font-family: 'Inter', sans-serif;
+    }
+    
+    .stApp {
+        background-color: #0b0f19;
+    }
+    
+    h1, h2, h3 {
+        font-family: 'Inter', sans-serif;
+        font-weight: 800;
+        background: -webkit-linear-gradient(45deg, #00d2ff, #3a7bd5);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        letter-spacing: -0.02em;
+    }
+    
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #111827, #0b0f19);
+        border-right: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    
+    div[data-testid="stMetric"] {
+        background: linear-gradient(145deg, #1e293b, #0f172a);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 16px;
+        padding: 20px;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+    }
+    
+    div[data-testid="stMetric"] label {
+        color: #94a3b8 !important;
+        font-weight: 600;
+    }
+    
+    .stButton>button[kind="primary"] {
+        background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+        color: white;
+        border-radius: 8px;
+        border: none;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        transition: all 0.3s ease;
+    }
+    .stButton>button[kind="primary"]:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4);
+    }
+    
+    .stButton>button[kind="secondary"] {
+        background: #1e293b;
+        color: #cbd5e1;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        transition: all 0.3s ease;
+    }
+    .stButton>button[kind="secondary"]:hover {
+        border-color: #3b82f6;
+        color: white;
+    }
+    
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 12px;
+        background: #0f172a;
+        border-radius: 12px;
+        padding: 8px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        color: #94a3b8;
+        background: #1e293b;
+        border-radius: 8px;
+        padding: 10px 20px;
+        border: 1px solid transparent;
+    }
+    .stTabs [aria-selected="true"] {
+        background: linear-gradient(90deg, #1d4ed8, #4338ca);
+        color: white !important;
+        border-color: rgba(255,255,255,0.2);
+    }
+    
+    [data-testid="stExpander"] {
+        background: #111827;
+        border-radius: 12px;
+        border: 1px solid #1f2937;
+    }
+    
+    .result-card {
+        background: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 12px;
+        padding: 20px;
+        margin: 10px 0;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        color: #e2e8f0;
+    }
+    </style>
+    """,
         unsafe_allow_html=True,
     )
-
-
 @st.cache_resource
 def load_models(model_dir: str):
     return discover_bundles(model_dir)
