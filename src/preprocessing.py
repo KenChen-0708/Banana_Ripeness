@@ -137,8 +137,17 @@ def banana_mask(image: np.ndarray, size: tuple[int, int] = (224, 224)) -> np.nda
     value = hsv[:, :, 2]
     hue = hsv[:, :, 0]
 
-    chromatic_fruit = (saturation >= 35) & (value >= 25) & (hue <= 95)
-    candidate = ((colour_distance >= 18) | chromatic_fruit) & (value >= 18)
+    # Fruit has distinct chromaticity (yellow, green, or warm brown)
+    chromatic_fruit = (saturation >= 32) & (value >= 25) & (hue <= 95)
+    
+    # Shadow suppression for dark surfaces/tables
+    if background[0] < 120:  # dark or medium background
+        is_shadow = (value < background[0] + 15) & (saturation < 30)
+        candidate = ((colour_distance >= 22) & ~is_shadow) | chromatic_fruit
+        candidate = candidate & (value >= 25) & ~is_shadow
+    else:
+        candidate = ((colour_distance >= 18) | chromatic_fruit) & (value >= 18)
+
     mask = (candidate.astype(np.uint8) * 255)
 
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
@@ -175,7 +184,7 @@ def colour_masks(
     green = fruit & (h >= 32) & (h <= 95) & (s >= 45) & (v >= 35)
     yellow = fruit & (h >= 18) & (h < 40) & (s >= 45) & (v >= 60)
     brown = fruit & (h >= brown_h_range[0]) & (h <= brown_h_range[1]) & (s >= 35) & (v >= 20) & (v <= 190)
-    dark = fruit & (v < dark_v_thresh)
+    dark = fruit & (v < dark_v_thresh) & (s >= 15)
     return {
         "fruit": mask,
         "green": green.astype(np.uint8) * 255,
