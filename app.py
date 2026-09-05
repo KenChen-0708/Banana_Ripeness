@@ -245,18 +245,26 @@ def render_explanation(image: np.ndarray, record, px_cm: float) -> None:
     geometry = explanation.get("geometry") or calibrate_fruit_geometry(image, pixels_per_cm=px_cm)
     annotated = draw_annotated_geometry(image, geometry)
 
+    st.markdown("##### 🔬 Computer Vision Diagnostic Masks & Spatial Analysis")
+    st.caption("Visual proof of classical image processing: Background segmentation, lesion masking, and geometric calibration.")
     cols = st.columns(3)
-    cols[0].image(annotated, caption="Calibrated contour & bounding box", width="stretch")
-    cols[1].image(explanation["fruit_mask"], caption="Detected fruit region", clamp=True, width="stretch")
-    cols[2].image(mask_overlay(image, explanation["brown_mask"]), caption="Blemish & dark lesion overlay", width="stretch")
+    with cols[0]:
+        st.image(annotated, caption="1. Spatial Calibration (MinAreaRect Bounding Box)", width="stretch")
+        st.caption("Measures real-world length & width (cm) calibrated by scale slider.")
+    with cols[1]:
+        st.image(explanation["fruit_mask"], caption="2. Binary Fruit Mask (Otsu + Morphology)", clamp=True, width="stretch")
+        st.caption("Isolates fruit body and removes noisy background artifacts.")
+    with cols[2]:
+        st.image(mask_overlay(image, explanation["brown_mask"]), caption="3. Necrotic Blemish Overlay (Peel Defect Slicing)", width="stretch")
+        st.caption("Segments brown spots to calculate peel surface damage ratio.")
 
-    # Physical Geometry KPI Cards
+    st.markdown("##### 📐 Physical Dimensions & Quality Grade Metrics")
     gcols = st.columns(5)
-    gcols[0].metric("Physical length", f"{geometry.get('physical_length_cm', 0.0):.1f} cm")
-    gcols[1].metric("Max width", f"{geometry.get('physical_width_cm', 0.0):.1f} cm")
-    gcols[2].metric("Surface area", f"{geometry.get('physical_area_cm2', 0.0):.1f} cm²")
-    gcols[3].metric("Blemish area", f"{geometry.get('blemish_area_cm2', 0.0):.1f} cm² ({geometry.get('blemish_ratio', 0.0):.1%})")
-    gcols[4].metric("Quality grade", explanation.get("quality_grade", "Grade A (Premium)"))
+    gcols[0].metric("Physical Length", f"{geometry.get('physical_length_cm', 0.0):.1f} cm", help="Measured along principal curvature axis")
+    gcols[1].metric("Max Caliper Width", f"{geometry.get('physical_width_cm', 0.0):.1f} cm", help="Maximum transverse thickness")
+    gcols[2].metric("Surface Area", f"{geometry.get('physical_area_cm2', 0.0):.1f} cm²", help="Projected 2D surface area")
+    gcols[3].metric("Blemish Surface", f"{geometry.get('blemish_ratio', 0.0):.1%}", help="Necrotic spot pixels divided by fruit area")
+    gcols[4].metric("Commercial Grade", explanation.get("quality_grade", "Grade A (Premium)"), help="Export quality grade based on blemish percent")
 
 
 def render_pipeline_tab(pipeline_name: str, pipeline_records, images: dict[str, np.ndarray], accent: str, px_cm: float) -> None:
@@ -369,15 +377,52 @@ def assessment_page(models, recommended_key: str) -> None:
             progress.progress(completed / total, text=f"Completed {completed} of {total} assessments")
     progress.empty()
 
-    with st.expander("📊 Advanced Consensus Summary & Data Exports", expanded=False):
-        assessment_summary(all_records, models[recommended_key][0].display_name)
+    # --- Instant Side-by-Side Model Comparison ---
+    st.markdown("### 🍌 Instant Algorithm Comparison (Mode A)")
+    st.markdown(
+        """<div class="guide-box">
+            <b>How to read this comparison:</b> Each column displays how one team member's computer vision pipeline 
+            classified this exact image. Notice differences in confidence scores and predictions between color-based approaches 
+            (Members A, B, C) versus texture-based analysis (Member D).
+        </div>""",
+        unsafe_allow_html=True
+    )
+
+    # Find the most recently inspected image
+    latest_img_name = list(images.keys())[-1]
+    active_img = images[latest_img_name]
+
+    col_img, col_preds = st.columns([1, 2.5])
+    with col_img:
+        st.image(active_img, caption=f"Active Sample: {latest_img_name}", width="stretch")
+    with col_preds:
+        st.caption("Side-by-side predictions for active image:")
+        m_cols = st.columns(len(models))
+        for idx, (m_key, (p_obj, _)) in enumerate(models.items()):
+            rec_match = next((r for r in all_records if r.algorithm == p_obj.display_name and r.filename == latest_img_name), None)
+            with m_cols[idx]:
+                is_best = (m_key == recommended_key)
+                tag = "⭐ Best Model" if is_best else f"Member {chr(65+idx)}"
+                st.markdown(f"**{tag}**<br><small>{p_obj.display_name}</small>", unsafe_allow_html=True)
+                if rec_match:
+                    st.metric("Ripeness", rec_match.predicted_class.title())
+                    st.caption(f"Confidence: **{rec_match.confidence:.1%}**")
+                    st.caption(f"Latency: **{rec_match.processing_time_ms:.1f}ms**")
+
     st.divider()
 
-    with st.expander("🔍 Deep-Dive Pipeline Explorer (Masks & Overlays)", expanded=False):
+    # Expanders with expanded=True on the Deep Dive Explorer
+    with st.expander("🔍 Deep-Dive Pipeline Explorer (Inspect Masks, Contours & Probabilities)", expanded=True):
+        st.caption("Select any pipeline tab below to inspect its intermediate computer vision stages, color distributions, and blemish detection.")
         tabs = st.tabs([pipeline.display_name for pipeline, _ in models.values()])
         for tab, (pipeline, _), accent in zip(tabs, models.values(), PIPELINE_ACCENTS, strict=True):
             with tab:
                 render_pipeline_tab(pipeline.display_name, [r for r in all_records if r.algorithm == pipeline.display_name], images, accent, px_cm)
+
+    with st.expander("📊 Advanced Consensus Summary & Data Exports (Batch Auditing)", expanded=False):
+        st.caption("Aggregated statistical ledger and commercial grade distribution across all evaluated images.")
+        assessment_summary(all_records, models[recommended_key][0].display_name)
+
 
 
 def video_analysis_page(models, recommended_key: str) -> None:
