@@ -24,6 +24,10 @@ A Streamlit application that compares four classical image-processing pipelines 
   - Real-world pixel-to-metric ($\text{px}/\text{cm}$) scaling.
   - Bounding box, rotated rectangle, centroid, length ($\text{cm}$), width ($\text{cm}$), surface area ($\text{cm}^2$), and blemish area ($\text{cm}^2$).
   - Automated commercial quality grading: *Grade A (Premium)*, *Grade B (Standard)*, *Grade C (Processing)*, and *Reject/Rotten*.
+- **Ripeness Progress Forecast**:
+  - A transparent rule-based estimate of time to ripeness or best-consumption window.
+  - Uses the recommended pipeline's current class/confidence, detected blemish ratio, selected storage temperature, and nearby ethylene-producing fruit setting.
+  - Clearly presented as an estimate rather than a trained days-to-ripeness model.
 - **Comprehensive Reporting & Evaluation**:
   - Multi-page automated PDF audit report with executive summary and detailed morphometry table.
   - CSV exports for image assessments and video timeline data.
