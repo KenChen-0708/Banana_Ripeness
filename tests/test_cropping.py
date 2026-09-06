@@ -1,7 +1,21 @@
 import numpy as np
 import pytest
 
-from src.cropping import CropBox, CropValidationError, crop_from_component_box, crop_image, validate_crop_box
+from src.cropping import (
+    CropBox,
+    CropValidationError,
+    analysis_images_for_assessment,
+    confirm_crop_state,
+    crop_box_from_display,
+    crop_box_to_display,
+    crop_from_component_box,
+    crop_image,
+    image_crop_key,
+    reconcile_crop_states,
+    resize_for_crop_editor,
+    reset_crop_state,
+    validate_crop_box,
+)
 from src.live_assessment import assess_image
 from src.types import PredictionRecord
 
@@ -48,6 +62,30 @@ def test_component_crop_box_is_converted_to_validated_crop(source_image):
     assert np.array_equal(cropped, source_image[30:90, 20:100])
 
 
+def test_crop_editor_display_is_bounded_without_changing_original_image():
+    original = np.full((1200, 1600, 3), 100, dtype=np.uint8)
+    display = resize_for_crop_editor(original, maximum_dimension=420)
+
+    assert display.shape == (315, 420, 3)
+    assert original.shape == (1200, 1600, 3)
+
+
+def test_display_crop_coordinates_map_back_to_full_resolution_crop():
+    original = np.full((1200, 1600, 3), 100, dtype=np.uint8)
+    display = resize_for_crop_editor(original, maximum_dimension=400)
+    original_box = CropBox(left=160, top=120, width=960, height=600)
+
+    display_coords = crop_box_to_display(original_box, original, display)
+    mapped_box = crop_box_from_display(
+        {"left": display_coords[0], "top": display_coords[2], "width": display_coords[1] - display_coords[0], "height": display_coords[3] - display_coords[2]},
+        original,
+        display,
+    )
+
+    assert mapped_box == original_box
+    assert crop_image(original, mapped_box).shape == (600, 960, 3)
+
+
 def test_confirmed_crop_is_passed_to_every_existing_assessment_pipeline(source_image):
     analysis_image = crop_image(source_image, CropBox(left=20, top=30, width=80, height=60))
 
@@ -86,3 +124,96 @@ def test_all_four_real_pipeline_classes_predict_after_cropping():
         pipeline = pipeline_class().fit(images, labels)
         record = pipeline.predict(images[0], "cropped.jpg")
         assert record.predicted_class in CLASS_NAMES
+
+
+def test_multiple_images_keep_independent_confirmed_crop_states(source_image):
+    second = np.full_like(source_image, 200)
+    states = confirm_crop_state({}, "first.jpg", source_image, CropBox(20, 30, 80, 60))
+    states = confirm_crop_state(states, "second.jpg", second, CropBox(40, 20, 70, 70))
+
+    first_state = states[image_crop_key("first.jpg", source_image)]
+    second_state = states[image_crop_key("second.jpg", second)]
+    assert first_state["crop_box"] == CropBox(20, 30, 80, 60)
+    assert second_state["crop_box"] == CropBox(40, 20, 70, 70)
+    assert first_state["confirmed_crop"].shape == (60, 80, 3)
+    assert second_state["confirmed_crop"].shape == (70, 70, 3)
+
+
+def test_reset_only_removes_selected_image_crop_state(source_image):
+    second = np.full_like(source_image, 200)
+    states = confirm_crop_state({}, "first.jpg", source_image, CropBox(20, 30, 80, 60))
+    states = confirm_crop_state(states, "second.jpg", second, CropBox(40, 20, 70, 70))
+    reset = reset_crop_state(states, "first.jpg", source_image)
+
+    assert image_crop_key("first.jpg", source_image) not in reset
+    assert image_crop_key("second.jpg", second) in reset
+
+
+def test_analysis_images_mix_confirmed_crops_and_original_images_without_mutation(source_image):
+    second = np.full_like(source_image, 200)
+    original_first, original_second = source_image.copy(), second.copy()
+    images = {"first.jpg": source_image, "second.jpg": second}
+    states = confirm_crop_state({}, "first.jpg", source_image, CropBox(20, 30, 80, 60))
+    analysis_images = analysis_images_for_assessment(images, states)
+
+    assert analysis_images["first.jpg"].shape == (60, 80, 3)
+    assert analysis_images["second.jpg"] is second
+    assert np.array_equal(source_image, original_first)
+    assert np.array_equal(second, original_second)
+
+
+def test_reconcile_crop_states_removes_images_no_longer_uploaded(source_image):
+    second = np.full_like(source_image, 200)
+    states = confirm_crop_state({}, "first.jpg", source_image, CropBox(20, 30, 80, 60))
+    states = confirm_crop_state(states, "second.jpg", second, CropBox(40, 20, 70, 70))
+
+    active_states = reconcile_crop_states(states, {"second.jpg": second})
+    assert image_crop_key("first.jpg", source_image) not in active_states
+    assert image_crop_key("second.jpg", second) in active_states
+
+
+def test_all_pipelines_receive_mixed_cropped_and_original_batch_images(source_image):
+    second = np.full_like(source_image, 200)
+    images = {"cropped.jpg": source_image, "original.jpg": second}
+    states = confirm_crop_state({}, "cropped.jpg", source_image, CropBox(20, 30, 80, 60))
+    analysis_images = analysis_images_for_assessment(images, states)
+
+    class RecordingPipeline:
+        def __init__(self):
+            self.display_name = "Recording"
+            self.received = []
+
+        def predict(self, image, filename):
+            self.received.append((filename, image.shape))
+            return PredictionRecord(filename, "ripe", 0.9, {"ripe": 0.9}, self.display_name, 1.0)
+
+    pipelines = [RecordingPipeline() for _ in range(4)]
+    for pipeline in pipelines:
+        for filename, image in analysis_images.items():
+            pipeline.predict(image, filename)
+        assert pipeline.received == [("cropped.jpg", (60, 80, 3)), ("original.jpg", source_image.shape)]
+
+
+def test_all_four_real_pipelines_predict_a_mixed_cropped_and_original_batch():
+    from src.constants import CLASS_NAMES
+    from src.pipelines import PIPELINE_CLASSES
+
+    training_images, labels = [], []
+    for label, colour in zip(CLASS_NAMES, ((50, 180, 50), (230, 210, 40), (160, 110, 35), (65, 45, 30)), strict=True):
+        for brightness_shift in (0, 10):
+            image = np.full((120, 160, 3), 245, dtype=np.uint8)
+            image[20:100, 20:140] = tuple(min(255, channel + brightness_shift) for channel in colour)
+            training_images.append(image)
+            labels.append(label)
+
+    batch_images = {"cropped.jpg": training_images[0], "original.jpg": training_images[1]}
+    states = confirm_crop_state({}, "cropped.jpg", training_images[0], CropBox(20, 20, 120, 80))
+    mixed_analysis_images = analysis_images_for_assessment(batch_images, states)
+
+    assert mixed_analysis_images["cropped.jpg"].shape == (80, 120, 3)
+    assert mixed_analysis_images["original.jpg"] is training_images[1]
+    for pipeline_class in PIPELINE_CLASSES.values():
+        pipeline = pipeline_class().fit(training_images, labels)
+        records = [pipeline.predict(image, filename) for filename, image in mixed_analysis_images.items()]
+        assert len(records) == 2
+        assert all(record.predicted_class in CLASS_NAMES for record in records)

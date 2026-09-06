@@ -23,7 +23,19 @@ from src.constants import (
     QUALITY_GRADES,
     SAMPLE_PRESETS,
 )
-from src.cropping import CropValidationError, crop_from_component_box
+from src.cropping import (
+    CropBox,
+    CropValidationError,
+    analysis_images_for_assessment,
+    confirm_crop_state,
+    crop_box_from_display,
+    crop_box_to_display,
+    crop_from_component_box,
+    image_crop_key,
+    reconcile_crop_states,
+    resize_for_crop_editor,
+    reset_crop_state,
+)
 from src.exports import records_csv, records_dataframe, records_pdf
 from src.forecasting import forecast_ripeness_progress
 from src.model_store import IncompatibleModelError, discover_bundles
@@ -299,7 +311,8 @@ def apply_reference_theme(dark_mode: bool = True) -> None:
     .preview-card-title,.crop-card-title {font-size:1.08rem;font-weight:760;color:var(--text);margin:0 0 .15rem}.preview-card-title .material-symbols-rounded,.crop-card-title .material-symbols-rounded {color:var(--green);vertical-align:-4px;margin-right:8px}
     .preview-card-subtitle,.crop-card-subtitle {font-size:.84rem;color:var(--muted);margin:0 0 1rem}
     .preview-meta {display:grid;gap:13px;padding:8px 4px}.preview-meta-row {display:grid;grid-template-columns:24px 110px 1fr;gap:8px;align-items:center;font-size:.9rem}.preview-meta-row .material-symbols-rounded {color:var(--muted);font-size:19px}.preview-meta-label {color:var(--muted)}.preview-meta-value {font-weight:700;color:var(--text);word-break:break-word}
-    .st-key-assessment_crop_mode [role="radiogroup"] {display:grid!important;grid-template-columns:1fr 1fr;gap:12px!important}.st-key-assessment_crop_mode [role="radiogroup"] label {min-height:72px;border:1px solid var(--line)!important;border-radius:12px!important;padding:16px!important;background:rgba(5,17,18,.22)!important}.st-key-assessment_crop_mode [role="radiogroup"] label:has(input:checked) {border-color:var(--green)!important;background:rgba(92,205,119,.08)!important;box-shadow:inset 0 0 0 1px rgba(125,229,142,.16)}.st-key-assessment_crop_mode [role="radiogroup"] p {font-weight:700!important}
+    [class*="st-key-assessment_crop_mode_"] [role="radiogroup"] {display:grid!important;grid-template-columns:1fr 1fr;gap:12px!important}[class*="st-key-assessment_crop_mode_"] [role="radiogroup"] label {min-height:72px;border:1px solid var(--line)!important;border-radius:12px!important;padding:16px!important;background:rgba(5,17,18,.22)!important}[class*="st-key-assessment_crop_mode_"] [role="radiogroup"] label:has(input:checked) {border-color:var(--green)!important;background:rgba(92,205,119,.08)!important;box-shadow:inset 0 0 0 1px rgba(125,229,142,.16)}[class*="st-key-assessment_crop_mode_"] [role="radiogroup"] p {font-weight:700!important}
+    .gallery-status {float:right;border:1px solid var(--line);border-radius:999px;padding:2px 8px;font-size:.72rem;font-weight:750;color:var(--muted)}.gallery-status.cropped {color:#f6df58;border-color:rgba(246,223,88,.38);background:rgba(246,211,59,.12)}.gallery-status.selected {color:#071114;border-color:var(--green);background:var(--green)}
     .st-key-run_assessment_button button {min-height:48px!important;font-size:1rem!important;font-weight:800!important}
     [data-testid="stProgressBar"]>div>div {background:var(--green)!important}
     button[kind="secondary"],button[kind="primary"],.stDownloadButton button {color:#071114!important;background:var(--green)!important;border:1px solid var(--green)!important;border-radius:10px!important}
@@ -429,11 +442,6 @@ def render_ripeness_forecast(record, temperature_c: float, near_ethylene_fruit: 
         st.warning("Manual review advised because the predicted condition indicates decay or the classification confidence is below 60%.")
 
 
-def _crop_source_token(filename: str, image: np.ndarray) -> tuple[str, tuple[int, ...], int]:
-    """Identify a single assessment image so stale confirmed crops are never reused."""
-    return filename, image.shape, int(image.sum())
-
-
 def _format_file_size(size_bytes: int | None) -> str:
     if size_bytes is None:
         return "Not available"
@@ -444,16 +452,21 @@ def _format_file_size(size_bytes: int | None) -> str:
     return f"{size_bytes / (1024 * 1024):.1f} MB"
 
 
-def render_manual_crop_control(filename: str, original_image: np.ndarray) -> np.ndarray | None:
-    """Return a confirmed manual crop, the original image, or ``None`` while awaiting confirmation."""
-    source_token = _crop_source_token(filename, original_image)
-    if st.session_state.get("assessment_crop_source") != source_token:
-        st.session_state.assessment_crop_source = source_token
-        st.session_state.assessment_confirmed_crop = None
+def assessment_input_key(analysis_images: dict[str, np.ndarray], pixels_per_cm: float) -> tuple[tuple[str, ...], float]:
+    """Identify the exact images and calibration used to produce saved assessment records."""
+    image_keys = tuple(image_crop_key(filename, image) for filename, image in analysis_images.items())
+    return image_keys, float(pixels_per_cm)
 
+
+def render_manual_crop_control(images: dict[str, np.ndarray], crop_states: dict[str, dict]) -> tuple[str, dict[str, dict]]:
+    """Edit one selected image while preserving independent crop state for every upload."""
+    filenames = list(images)
+    selected_filename = st.session_state.get("assessment_selected_image", filenames[0])
+    if selected_filename not in images:
+        selected_filename = filenames[0]
     with st.container(border=True):
         st.markdown('<p class="crop-card-title"><span class="material-symbols-rounded">crop</span>Crop Banana Before Assessment <small>(Optional)</small></p>', unsafe_allow_html=True)
-        st.markdown('<p class="crop-card-subtitle">If automatic segmentation is not accurate, manually crop a region that focuses on the banana.</p>', unsafe_allow_html=True)
+        st.markdown('<p class="crop-card-subtitle">If automatic segmentation is not accurate, you can manually crop the banana region.</p>', unsafe_allow_html=True)
         mode = st.radio(
             "Crop Banana Before Assessment",
             ("Use original image", "Manually crop banana"),
@@ -462,43 +475,75 @@ def render_manual_crop_control(filename: str, original_image: np.ndarray) -> np.
             label_visibility="collapsed",
             help="Cropping only changes the input image. Existing banana segmentation and all four model pipelines still run normally.",
         )
-    if mode == "Use original image":
-        st.session_state.assessment_confirmed_crop = None
-        return original_image
+        if mode == "Use original image":
+            return selected_filename, crop_states
 
-    st.caption("Drag and resize the rectangle around the banana. The original upload is shown above; this editor is the only image needed here.")
-    crop_result = st_cropper(
-        Image.fromarray(original_image),
-        realtime_update=True,
-        box_color="#F4B942",
-        aspect_ratio=None,
-        return_type="both",
-        key=f"assessment_cropper_{source_token[0]}",
-    )
-    _, component_box = crop_result
-    try:
-        pending_crop = crop_from_component_box(original_image, component_box)
-        st.image(pending_crop, caption="Cropped preview", width="stretch")
-    except CropValidationError as exc:
-        pending_crop = None
-        st.error(f"Invalid crop: {exc}")
+        if len(filenames) > 1:
+            selected_filename = st.selectbox(
+                "Select image to edit",
+                filenames,
+                key="assessment_selected_image",
+                help="Select an uploaded image to crop. Each image keeps its own crop state.",
+            )
+        else:
+            selected_filename = filenames[0]
+        original_image = images[selected_filename]
+        source_key = image_crop_key(selected_filename, original_image)
+        state = crop_states.get(source_key)
 
-    confirm_col, reset_col, _ = st.columns([1, 1, 2])
-    if confirm_col.button("Confirm Crop", type="primary", disabled=pending_crop is None, key="confirm_assessment_crop"):
-        st.session_state.assessment_confirmed_crop = pending_crop.copy()
-    if reset_col.button("Reset Crop", key="reset_assessment_crop"):
-        st.session_state.assessment_confirmed_crop = None
-        st.rerun()
+        default_coords = None
+        editor_image = resize_for_crop_editor(original_image)
+        if state:
+            box = state["crop_box"]
+            default_coords = crop_box_to_display(box, original_image, editor_image)
 
-    confirmed_crop = st.session_state.get("assessment_confirmed_crop")
-    if confirmed_crop is None:
-        st.info("Confirm a valid crop before assessment. Predictions are paused while manual crop mode is active.")
-        return None
-    st.success("Crop confirmed. The cropped image will be passed to the existing segmentation and all four assessment pipelines.")
-    return confirmed_crop
+        editor_col, preview_col, action_col = st.columns([1.35, 1, 0.8])
+        with editor_col:
+            st.markdown("**Original Image**")
+            crop_result = st_cropper(
+                Image.fromarray(editor_image),
+                realtime_update=True,
+                default_coords=default_coords,
+                box_color="#7DE58E",
+                aspect_ratio=None,
+                return_type="both",
+                key=f"assessment_cropper_{source_key}",
+                should_resize_image=False,
+            )
+            _, component_box = crop_result
+            st.caption("Drag to select the crop area")
+        try:
+            pending_box = crop_box_from_display(component_box, original_image, editor_image)
+            pending_crop = crop_from_component_box(
+                original_image,
+                {"left": pending_box.left, "top": pending_box.top, "width": pending_box.width, "height": pending_box.height},
+            )
+        except CropValidationError as exc:
+            pending_crop, pending_box = None, None
+            preview_col.error(f"Invalid crop: {exc}")
+        with preview_col:
+            st.markdown("**Cropped Preview**")
+            if pending_crop is not None:
+                st.image(pending_crop, width=400)
+                st.caption(f"Preview: {pending_crop.shape[1]} × {pending_crop.shape[0]} px")
+                st.caption("Actual analysis uses the full-resolution crop.")
+        with action_col:
+            st.markdown("&nbsp;", unsafe_allow_html=True)
+            if st.button("✓  Confirm Crop", type="primary", disabled=pending_crop is None, key=f"confirm_assessment_crop_{source_key}", width="stretch"):
+                crop_states = confirm_crop_state(crop_states, selected_filename, original_image, pending_box)
+                st.session_state.assessment_crop_states = crop_states
+                st.rerun()
+            if st.button("↻  Reset Crop", key=f"reset_assessment_crop_{source_key}", width="stretch"):
+                crop_states = reset_crop_state(crop_states, selected_filename, original_image)
+                st.session_state.assessment_crop_states = crop_states
+                st.rerun()
+            st.info("Only the selected image will be cropped. Other images remain unchanged.")
+        if source_key in crop_states:
+            st.success("Crop confirmed. This image will use its full-resolution crop during assessment.")
+    return selected_filename, crop_states
 
 
-def render_uploaded_image_preview(images: dict[str, np.ndarray], image_metadata: dict[str, int | None]) -> None:
+def render_uploaded_image_preview(images: dict[str, np.ndarray], image_metadata: dict[str, int | None], crop_states: dict[str, dict], selected_filename: str) -> None:
     """Show decoded originals before optional cropping or assessment processing begins."""
     if len(images) == 1:
         filename, image = next(iter(images.items()))
@@ -522,11 +567,16 @@ def render_uploaded_image_preview(images: dict[str, np.ndarray], image_metadata:
 
     with st.container(border=True):
         st.markdown('<p class="preview-card-title"><span class="material-symbols-rounded">collections</span>Uploaded Images Preview</p>', unsafe_allow_html=True)
-        st.markdown(f'<p class="preview-card-subtitle">{len(images)} original images ready for batch assessment.</p>', unsafe_allow_html=True)
-        columns = st.columns(min(3, len(images)))
+        st.markdown(f'<p class="preview-card-subtitle">Select an image below to preview or crop. You can crop each of the {len(images)} images individually.</p>', unsafe_allow_html=True)
+        columns = st.columns(min(4, len(images)))
         for index, (filename, image) in enumerate(images.items()):
             with columns[index % len(columns)]:
-                st.image(image, caption=f"{filename} · {_format_file_size(image_metadata.get(filename))}", width="stretch")
+                status = "Cropped" if image_crop_key(filename, image) in crop_states else "Original"
+                status_class = "cropped" if status == "Cropped" else ""
+                if filename == selected_filename:
+                    status, status_class = "Selected", "selected"
+                st.image(image, width="stretch")
+                st.markdown(f'<span class="preview-meta-value">{filename}</span><span class="gallery-status {status_class}">{status}</span>', unsafe_allow_html=True)
 
 
 def render_pipeline_tab(pipeline_name: str, pipeline_records, images: dict[str, np.ndarray], accent: str, px_cm: float) -> None:
@@ -647,16 +697,15 @@ def assessment_page(models, recommended_key: str) -> None:
     if not images:
         return
 
-    render_uploaded_image_preview(images, image_metadata)
-
-    if len(images) == 1:
-        filename, original_image = next(iter(images.items()))
-        analysis_image = render_manual_crop_control(filename, original_image)
-        if analysis_image is None:
-            return
-        images = {filename: analysis_image}
-    else:
-        st.info("Manual cropping is available for a single-image assessment. Batch processing continues with the original uploaded images.")
+    crop_states = reconcile_crop_states(st.session_state.get("assessment_crop_states", {}), images)
+    st.session_state.assessment_crop_states = crop_states
+    selected_filename = st.session_state.get("assessment_selected_image", next(iter(images)))
+    if selected_filename not in images:
+        selected_filename = next(iter(images))
+    render_uploaded_image_preview(images, image_metadata, crop_states, selected_filename)
+    selected_filename, crop_states = render_manual_crop_control(images, crop_states)
+    st.session_state.assessment_crop_states = crop_states
+    analysis_images = analysis_images_for_assessment(images, crop_states)
 
     with st.expander("Optional benchmark, calibration, and forecast settings"):
         px_cm = st.slider(
@@ -684,25 +733,39 @@ def assessment_page(models, recommended_key: str) -> None:
     action_col, _ = st.columns([1, 3])
     with action_col:
         run_assessment = st.button("Run Assessment  →", type="primary", key="run_assessment_button", width="stretch")
-    if not run_assessment:
+    input_key = assessment_input_key(analysis_images, px_cm)
+    saved_result = st.session_state.get("assessment_result")
+    if saved_result and saved_result["input_key"] != input_key:
+        st.session_state.pop("assessment_result", None)
+        saved_result = None
+
+    if run_assessment:
+        all_records, completed = [], 0
+        total = len(analysis_images) * len(models)
+        progress = st.progress(0, text="Running all image-processing pipelines...")
+        for pipeline, _ in models.values():
+            for filename, image in analysis_images.items():
+                record = pipeline.predict(image, filename)
+                # update explanation geometry with current calibration scale
+                record.explanation["geometry"] = calibrate_fruit_geometry(image, mask=record.explanation["fruit_mask"], pixels_per_cm=px_cm)
+                record.explanation["quality_grade"] = determine_quality_grade(record.predicted_class, record.explanation["geometry"]["blemish_ratio"])
+                all_records.append(record)
+                completed += 1
+                progress.progress(completed / total, text=f"Completed {completed} of {total} assessments")
+        progress.empty()
+        st.session_state.assessment_result = {
+            "input_key": input_key,
+            "records": all_records,
+            "analysis_images": analysis_images,
+        }
+    elif saved_result:
+        all_records = saved_result["records"]
+        analysis_images = saved_result["analysis_images"]
+    else:
         return
 
-    all_records, completed = [], 0
-    total = len(images) * len(models)
-    progress = st.progress(0, text="Running all image-processing pipelines...")
-    for pipeline, _ in models.values():
-        for filename, image in images.items():
-            record = pipeline.predict(image, filename)
-            # update explanation geometry with current calibration scale
-            record.explanation["geometry"] = calibrate_fruit_geometry(image, mask=record.explanation["fruit_mask"], pixels_per_cm=px_cm)
-            record.explanation["quality_grade"] = determine_quality_grade(record.predicted_class, record.explanation["geometry"]["blemish_ratio"])
-            all_records.append(record)
-            completed += 1
-            progress.progress(completed / total, text=f"Completed {completed} of {total} assessments")
-    progress.empty()
-
     # --- Instant Side-by-Side Model Comparison ---
-    latest_img_name = list(images.keys())[-1]
+    latest_img_name = selected_filename
     st.markdown(f"### 🍌 Instant Algorithm Comparison (Mode A) — `{latest_img_name}`")
     
     # 4 balanced horizontal prediction cards spanning the screen evenly
@@ -744,7 +807,7 @@ def assessment_page(models, recommended_key: str) -> None:
         tabs = st.tabs([pipeline.display_name for pipeline, _ in models.values()])
         for tab, (pipeline, _), accent in zip(tabs, models.values(), PIPELINE_ACCENTS, strict=True):
             with tab:
-                render_pipeline_tab(pipeline.display_name, [r for r in all_records if r.algorithm == pipeline.display_name], images, accent, px_cm)
+                render_pipeline_tab(pipeline.display_name, [r for r in all_records if r.algorithm == pipeline.display_name], analysis_images, accent, px_cm)
 
     with st.expander("📊 Advanced Consensus Summary & Data Exports (Batch Auditing)", expanded=False):
         st.caption("Aggregated statistical ledger and commercial grade distribution across all evaluated images.")
