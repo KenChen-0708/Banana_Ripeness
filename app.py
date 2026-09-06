@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import subprocess
 import sys
@@ -45,7 +46,15 @@ from src.preprocessing import (
     mask_overlay,
     resize_rgb,
 )
-from src.video import process_video
+from src.video import VideoValidationError, analyse_frame, probe_video, process_video
+
+try:
+    import av
+    from streamlit_webrtc import RTCConfiguration, VideoProcessorBase, WebRtcMode, webrtc_streamer
+
+    WEBRTC_AVAILABLE = True
+except ImportError:
+    WEBRTC_AVAILABLE = False
 
 st.set_page_config(
     page_title="Banana Ripeness Assessment",
@@ -524,7 +533,11 @@ def render_pipeline_tab(pipeline_name: str, pipeline_records, images: dict[str, 
     frame = records_dataframe(pipeline_records)
     
     if len(frame) > 1:
-        filename = st.selectbox("Select image to inspect", frame["filename"].tolist(), index=len(frame)-1, key=f"inspect_{pipeline_name}")
+        filename = st.selectbox(
+            "Select image to inspect", frame["filename"].tolist(), index=len(frame)-1,
+            key=f"inspect_{pipeline_name}",
+            help="Chooses which uploaded image is shown in this pipeline's diagnostic view. For accuracy checking, inspect several images from different ripeness classes rather than relying on one example.",
+        )
     else:
         filename = frame["filename"].iloc[0]
 
@@ -601,13 +614,13 @@ def assessment_page(models, recommended_key: str) -> None:
         "Upload banana images",
         type=["jpg", "jpeg", "png"],
         accept_multiple_files=True,
-        help="Start with one image, then add more at any time.",
+        help="Selects one or more banana photographs for comparison across every trained pipeline. Recommended: one banana per image, sharp focus, diffuse lighting, plain contrasting background, minimal shadow, and at least 224 × 224 pixels.",
         key="assessment_uploads",
     )
     preset_choice = st.selectbox(
         "Quick-load benchmark preset samples",
         ["-- Choose a preset or upload your own files --"] + list(SAMPLE_PRESETS.keys()),
-        help="Optional: load one representative project image instead of uploading a file.",
+        help="Loads a representative project image without uploading a file. Recommended: use presets for demonstrations, but use your own well-lit banana photograph for a real assessment.",
     )
 
     images, image_metadata, errors = {}, {}, []
@@ -652,7 +665,7 @@ def assessment_page(models, recommended_key: str) -> None:
             max_value=40.0,
             value=DEFAULT_PIXELS_PER_CM,
             step=0.5,
-            help="Standardizes pixel dimensions to physical measurements in cm.",
+            help="Converts pixel measurements to centimetres. Measure a known reference object in the same image plane and enter pixels ÷ reference length in cm. Recommended: calibrate each camera setup; use 10 px/cm only as a demonstration default.",
         )
         st.caption("Commercial quality rules: Grade A (<5% spots), Grade B (5-15%), Grade C (15-30%), Reject (>30% or Rotten).")
         st.markdown("##### Ripeness forecast storage conditions")
@@ -660,12 +673,12 @@ def assessment_page(models, recommended_key: str) -> None:
         with storage_l:
             storage_temperature_c = st.slider(
                 "Storage temperature (°C)", min_value=0.0, max_value=40.0, value=22.0, step=1.0,
-                help="Cool storage slows progression; warm storage speeds it up.",
+                help="Controls the forecasted ripening rate because cool storage slows progression and warmth accelerates it. Recommended: enter the measured storage temperature; 13–15°C is suitable for slowing ripening, while 22°C represents typical room storage.",
             )
         with storage_r:
             near_ethylene_fruit = st.checkbox(
                 "Stored near apples, avocados, or other ethylene-producing fruit",
-                help="Ethylene exposure can accelerate banana ripening.",
+                help="Adjusts the forecast for nearby ethylene-producing fruit, which accelerates ripening. Recommended: enable only when bananas are stored close to apples, avocados, tomatoes, or other ethylene sources.",
             )
 
     action_col, _ = st.columns([1, 3])
@@ -740,92 +753,215 @@ def assessment_page(models, recommended_key: str) -> None:
 
 
 def video_analysis_page(models, recommended_key: str) -> None:
-    hero("Video stream & live camera inspection", "Conveyor belt video frame-by-frame ripeness tracking and live webcam capture.", "Extra efforts: video processing")
-
+    hero(
+        "Video and camera inspection",
+        "Auditable sampled-video analysis, continuous browser-camera inspection, and calibrated snapshots.",
+        "Extra efforts: video processing",
+    )
     pipeline, _ = models[recommended_key]
     st.markdown(f"**Active grading pipeline:** `{pipeline.display_name}`")
+    st.caption("Pipeline: decode → sample → segment → classify → detect blemishes → calibrate → grade → track.")
 
-    v_tab1, v_tab2 = st.tabs(["🎥 Video file analysis (conveyor belt)", "📸 Live camera snapshot"])
+    video_tab, live_tab, snapshot_tab = st.tabs(
+        ["🎥 Uploaded video analysis", "📹 Continuous camera", "📸 Camera snapshot"]
+    )
 
-    with v_tab1:
-        v_col1, v_col2 = st.columns([1.5, 1])
-        with v_col1:
-            video_file = st.file_uploader("Upload conveyor video stream", type=["mp4", "avi", "mov", "mkv"])
-        with v_col2:
-            sample_fps = st.slider("Analysis sample rate (FPS)", min_value=0.5, max_value=5.0, value=2.0, step=0.5)
-            v_px_cm = st.slider("Video spatial scale (px / cm)", min_value=1.0, max_value=40.0, value=DEFAULT_PIXELS_PER_CM, step=0.5, key="v_scale")
-
-        if video_file is not None:
-            if st.button("Process video stream", type="primary", width="stretch"):
-                with st.spinner("Analyzing video frames and measuring blemish progression..."):
-                    video_bytes = video_file.getvalue()
-                    res = process_video(video_bytes, pipeline, sample_fps=sample_fps, pixels_per_cm=v_px_cm)
-                    st.session_state["video_result"] = res
-
-            if "video_result" in st.session_state:
-                res = st.session_state["video_result"]
-                st.success(f"Analyzed {res.frames_analyzed} frames across {res.duration_sec:.1f}s video duration ({res.fps:.1f} source FPS).")
-
-                kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-                kpi1.metric("Analyzed frames", res.frames_analyzed)
-                kpi2.metric("Mean confidence", f"{res.mean_confidence:.1%}")
-                kpi3.metric("Avg blemish surface", f"{res.mean_blemish_ratio:.1%}")
-                dominant = max(res.class_counts, key=res.class_counts.get) if res.class_counts else "N/A"
-                kpi4.metric("Dominant ripeness", dominant.title())
-
-                st.subheader("Temporal ripeness progression chart")
-                if not res.timeline_df.empty:
-                    chart_df = res.timeline_df.set_index("timestamp_sec")[["blemish_percent", "confidence"]]
-                    st.line_chart(chart_df, color=["#E5A93D", "#3BA272"])
-
-                st.subheader("Frame visual inspector")
-                if res.sampled_frames:
-                    frame_indices = [f"Frame {idx+1} ({t:.2f}s)" for idx, (t, _, _, _) in enumerate(res.sampled_frames)]
-                    chosen_frame_name = st.select_slider("Scrub frames", options=frame_indices)
-                    chosen_idx = frame_indices.index(chosen_frame_name)
-                    t_sec, annotated_frame, rec, geom = res.sampled_frames[chosen_idx]
-
-                    f_left, f_right = st.columns([1.4, 1])
-                    with f_left:
-                        st.image(annotated_frame, caption=f"Timestamp: {t_sec:.2f}s | Ripeness: {rec.predicted_class.title()} | {geom.get('quality_grade')}", width="stretch")
-                    with f_right:
-                        st.markdown(f"**Predicted Maturity:** `{rec.predicted_class.title()}`")
-                        st.markdown(f"**Quality Grade:** `{geom.get('quality_grade')}`")
-                        st.markdown(f"**Confidence:** `{rec.confidence:.1%}`")
-                        st.markdown(f"**Blemish Area:** `{geom.get('blemish_area_cm2', 0.0):.1f} cm²` ({geom.get('blemish_ratio', 0.0):.1%})")
-                        st.markdown(f"**Physical Dimensions:** `{geom.get('physical_length_cm', 0.0):.1f}cm × {geom.get('physical_width_cm', 0.0):.1f}cm`")
-
-                st.subheader("Complete frame ledger")
-                st.dataframe(res.timeline_df, hide_index=True, width="stretch")
-                st.download_button("Export video analysis CSV", res.timeline_df.to_csv(index=False).encode("utf-8"), "video_timeline_analysis.csv", "text/csv")
+    with video_tab:
+        video_file = st.file_uploader(
+            "Upload conveyor video", type=["mp4", "avi", "mov", "mkv"], key="video_upload",
+            help="Selects the conveyor recording to analyse. Recommended: MP4/H.264, steady camera, diffuse lighting, contrasting plain background, and at least 720p resolution for more reliable boundaries.",
+        )
+        if video_file is None:
+            st.info("Upload a video for offline sampled-frame analysis. This mode does not claim real-time processing.")
         else:
-            st.info("Upload a video clip (e.g., MP4 conveyor recording) to execute real-time frame-by-frame analysis.")
+            video_bytes = video_file.getvalue()
+            st.video(video_bytes)
+            try:
+                metadata = probe_video(video_bytes, video_file.name)
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Resolution", f"{metadata.width} × {metadata.height}")
+                m2.metric("Duration", f"{metadata.duration_sec:.1f} s")
+                m3.metric("Source FPS", f"{metadata.fps:.2f}")
+                m4.metric("Codec", metadata.codec)
+            except VideoValidationError as exc:
+                st.error(str(exc))
+                metadata = None
 
-    with v_tab2:
-        st.caption("Capture an instant snapshot directly from your webcam or mobile device camera.")
-        cam_image = st.camera_input("Take a photo of a banana")
-        if cam_image is not None:
-            cam_arr = decode_image(cam_image.getvalue())
-            record = pipeline.predict(cam_arr, filename="camera_snapshot.jpg")
-            geometry = calibrate_fruit_geometry(cam_arr, pixels_per_cm=DEFAULT_PIXELS_PER_CM)
-            grade = determine_quality_grade(record.predicted_class, geometry["blemish_ratio"])
-            annotated = draw_annotated_geometry(cam_arr, geometry)
+            with st.expander("Analysis and calibration settings", expanded=True):
+                c1, c2, c3, c4 = st.columns(4)
+                sample_fps = c1.slider(
+                    "Requested sample FPS", 0.5, 10.0, 2.0, 0.5,
+                    help="Controls how many frames per second are sampled for analysis. Higher values capture faster changes but take longer and may repeat the same fruit. Recommended: 2 FPS for normal conveyor footage; 4–5 FPS for fast motion.",
+                )
+                max_frames = c2.number_input(
+                    "Maximum sampled frames", 10, 1000, 120, 10,
+                    help="Limits the number of sampled frames to control processing time and memory. Recommended: 120 for a quick audit; increase until the expected samples cover the full video for a final evaluation.",
+                )
+                v_px_cm = c3.slider(
+                    "Calibrated pixels per cm", 1.0, 80.0, DEFAULT_PIXELS_PER_CM, 0.5, key="v_scale",
+                    help="Converts detected pixel dimensions into centimetres. Calculate it from a ruler or known-size marker beside the banana. Recommended: use the measured value for this exact camera distance; 10 px/cm is only a default.",
+                )
+                confidence_threshold = c4.slider(
+                    "Uncertain below", 0.0, 1.0, 0.55, 0.05,
+                    help="Predictions below this probability are labelled Uncertain instead of forcing a ripeness class. Recommended: 0.55 for balanced use; 0.65–0.70 when avoiding false confident results matters more.",
+                )
+                st.caption("Centimetre measurements are estimates. Set pixels/cm using a ruler or known-size reference in the same image plane.")
+                if metadata:
+                    effective = metadata.fps / max(1, round(metadata.fps / sample_fps))
+                    expected = min(int(max_frames), int(np.ceil(metadata.total_frames / max(1, round(metadata.fps / sample_fps)))))
+                    st.info(f"Expected samples: {expected} · effective sample rate: {effective:.2f} FPS · cap: {int(max_frames)} frames")
 
-            st.markdown(
-                f'<div class="result-card"><b>Camera snapshot assessment</b><br>'
-                f"Ripeness: <b>{record.predicted_class.title()}</b> | Grade: <b>{grade}</b> · "
-                f"Confidence: {record.confidence:.1%} · Processing: {record.processing_time_ms:.1f} ms</div>",
-                unsafe_allow_html=True,
+            result_key = hashlib.sha256(
+                video_bytes + f"{pipeline.display_name}|{sample_fps}|{max_frames}|{v_px_cm}|{confidence_threshold}".encode()
+            ).hexdigest()
+            if st.button("Analyse uploaded video", type="primary", width="stretch", disabled=metadata is None):
+                progress = st.progress(0.0, text="Preparing video analysis…")
+                def update_progress(done: int, total: int) -> None:
+                    progress.progress(min(done / total, 1.0), text=f"Analysing sampled frame {done} of {total}")
+                try:
+                    res = process_video(
+                        video_bytes, pipeline, sample_fps=float(sample_fps), max_frames=int(max_frames),
+                        pixels_per_cm=float(v_px_cm), source_filename=video_file.name,
+                        confidence_threshold=float(confidence_threshold), progress_callback=update_progress,
+                    )
+                    st.session_state["video_result"] = (result_key, res)
+                    progress.progress(1.0, text="Analysis complete")
+                except (VideoValidationError, ValueError, cv2.error) as exc:
+                    st.session_state.pop("video_result", None)
+                    progress.empty()
+                    st.error(f"Video analysis failed: {exc}")
+
+            cached = st.session_state.get("video_result")
+            if cached and cached[0] != result_key:
+                st.warning("Settings, model, or uploaded video changed. Run analysis again to refresh the results.")
+            if cached and cached[0] == result_key:
+                res = cached[1]
+                st.success(f"Analysed {res.frames_analyzed} sampled frames at {res.effective_sample_fps:.2f} effective FPS.")
+                if res.truncated:
+                    st.warning("The frame cap was reached; the remaining video was not analysed.")
+                valid_count = int(res.timeline_df["detection_valid"].sum())
+                dominant = max(res.class_counts, key=res.class_counts.get) if sum(res.class_counts.values()) else "N/A"
+                k1, k2, k3, k4, k5, k6 = st.columns(6)
+                k1.metric("Valid frames", f"{valid_count}/{res.frames_analyzed}")
+                k2.metric("Mean confidence", f"{res.mean_confidence:.1%}")
+                k3.metric("Mean blemish", f"{res.mean_blemish_ratio:.1%}")
+                k4.metric("Dominant result", dominant.title())
+                k5.metric("Model latency", f"{res.mean_processing_time_ms:.1f} ms")
+                k6.metric("Analysis throughput", f"{res.analysis_fps:.2f} FPS")
+
+                st.subheader("Temporal measurements")
+                time_df = res.timeline_df.set_index("timestamp_sec")
+                chart_left, chart_right = st.columns(2)
+                chart_left.caption("Confidence (%)")
+                chart_left.line_chart(time_df[["confidence_percent"]], color=["#3BA272"])
+                chart_right.caption("Blemish area (%)")
+                chart_right.line_chart(time_df[["blemish_percent"]], color=["#E5A93D"])
+                d1, d2 = st.columns(2)
+                d1.caption("Ripeness / uncertainty distribution")
+                d1.bar_chart(pd.Series(res.class_counts, name="frames"))
+                d2.caption("Quality-grade distribution")
+                d2.bar_chart(pd.Series(res.grade_counts, name="frames"))
+
+                st.subheader("Tracked-frame inspector")
+                if res.sampled_frames:
+                    options = [
+                        f"Source frame {int(res.timeline_df.iloc[i]['source_frame_index'])} · {t:.2f}s"
+                        for i, (t, _, _, _) in enumerate(res.sampled_frames)
+                    ]
+                    selected = st.select_slider(
+                        "Scrub sampled source frames", options=options,
+                        help="Chooses one sampled source frame for detailed visual inspection. Recommended: check frames near class changes, confidence drops, or blemish spikes to verify that the contour follows the banana.",
+                    )
+                    idx = options.index(selected)
+                    t_sec, annotated, record, geometry = res.sampled_frames[idx]
+                    left, right = st.columns([1.4, 1])
+                    left.image(annotated, caption=f"{selected} · object {geometry.get('object_id') or 'not detected'}", width="stretch")
+                    if not geometry["detection_valid"]:
+                        right.warning("No credible fruit contour was detected; calibrated measurements are suppressed.")
+                    else:
+                        label = "Uncertain" if record.confidence < confidence_threshold else record.predicted_class.title()
+                        right.markdown(f"**Result:** `{label}`  \n**Grade:** `{geometry['quality_grade']}`  \n**Confidence:** `{record.confidence:.1%}`")
+                        right.markdown(f"**Blemish:** `{geometry['blemish_ratio']:.1%}`  \n**Dimensions:** `{geometry['physical_length_cm']:.1f} × {geometry['physical_width_cm']:.1f} cm`")
+
+                st.subheader("Complete sampled-frame ledger")
+                st.dataframe(res.timeline_df, hide_index=True, width="stretch")
+                e1, e2 = st.columns(2)
+                e1.download_button("Download CSV ledger", res.timeline_df.to_csv(index=False).encode("utf-8"), "video_timeline_analysis.csv", "text/csv", width="stretch")
+                if res.annotated_video_bytes:
+                    e2.download_button("Download annotated video", res.annotated_video_bytes, "annotated_video.mp4", res.annotated_video_mime, width="stretch")
+
+    with live_tab:
+        st.caption("Continuous browser-camera frames are processed and annotated while the stream is playing. Use STOP to end capture.")
+        l1, l2 = st.columns(2)
+        live_px_cm = l1.slider(
+            "Live-camera pixels per cm", 1.0, 80.0, DEFAULT_PIXELS_PER_CM, 0.5, key="live_scale",
+            help="Calibrates live-frame dimensions. Derive pixels/cm from a visible reference at the banana's distance. Recommended: lock the camera position and use the measured value; do not rely on the 10 px/cm default for physical measurements.",
+        )
+        live_threshold = l2.slider(
+            "Live uncertain threshold", 0.0, 1.0, 0.55, 0.05, key="live_threshold",
+            help="Labels low-probability live predictions as Uncertain. Recommended: 0.60 for live video because motion blur and lighting changes introduce more noise; use 0.55 under controlled lighting.",
+        )
+        st.caption("Throughput depends on the selected model and device. Calibrated dimensions require a reference object in the same image plane.")
+        if WEBRTC_AVAILABLE:
+            class BananaVideoProcessor(VideoProcessorBase):
+                def recv(self, frame):
+                    rgb = frame.to_ndarray(format="rgb24")
+                    try:
+                        annotated, _, _, _ = analyse_frame(rgb, pipeline, live_px_cm, live_threshold, "live_camera")
+                        return av.VideoFrame.from_ndarray(annotated, format="rgb24")
+                    except Exception:
+                        return frame
+            webrtc_streamer(
+                key=f"banana-live-{recommended_key}", mode=WebRtcMode.SENDRECV,
+                rtc_configuration=RTCConfiguration({"iceServers": []}),
+                media_stream_constraints={"video": True, "audio": False},
+                video_processor_factory=BananaVideoProcessor,
+                async_processing=True,
             )
-            c1, c2, c3 = st.columns(3)
-            c1.image(annotated, caption="Calibrated contour & bounding box", width="stretch")
-            c2.image(record.explanation["fruit_mask"], caption="Segmented mask", clamp=True, width="stretch")
-            c3.image(mask_overlay(cam_arr, record.explanation["brown_mask"]), caption="Blemish overlay", width="stretch")
+        else:
+            st.warning("Continuous camera support is unavailable in this environment. Install project requirements and use snapshot mode meanwhile.")
+
+    with snapshot_tab:
+        st.caption("Capture and assess one camera image. This is a snapshot, not a continuous stream.")
+        s1, s2 = st.columns(2)
+        snapshot_px_cm = s1.slider(
+            "Snapshot pixels per cm", 1.0, 80.0, DEFAULT_PIXELS_PER_CM, 0.5, key="snapshot_scale",
+            help="Converts snapshot pixels into centimetres. Photograph a ruler or known-size marker in the same plane and enter pixels ÷ centimetres. Recommended: measure per camera setup; 10 px/cm is only illustrative.",
+        )
+        snapshot_threshold = s2.slider(
+            "Snapshot uncertain threshold", 0.0, 1.0, 0.55, 0.05, key="snapshot_threshold",
+            help="Controls when a snapshot result is reported as Uncertain. Recommended: 0.55 for normal use or 0.65 for stricter quality-control decisions.",
+        )
+        st.caption("Set pixels/cm from a ruler or known-size object photographed beside the banana.")
+        cam_image = st.camera_input(
+            "Take a photo of a banana",
+            help="Captures one still image for segmentation and classification. Recommended: show one banana, fill roughly 30–70% of the frame, use diffuse lighting, keep the image sharp, and use a plain contrasting background.",
+        )
+        if cam_image is not None:
+            try:
+                cam_arr = decode_image(cam_image.getvalue())
+                annotated, record, geometry, label = analyse_frame(cam_arr, pipeline, snapshot_px_cm, snapshot_threshold, "camera_snapshot.jpg")
+                if not geometry["detection_valid"]:
+                    st.warning("No credible banana contour was detected. Retake the image against a contrasting background.")
+                st.markdown(
+                    f'<div class="result-card"><b>Camera snapshot assessment</b><br>Result: <b>{label.title()}</b> | '
+                    f'Grade: <b>{geometry["quality_grade"]}</b> · Confidence: {record.confidence:.1%} · '
+                    f'Processing: {record.processing_time_ms:.1f} ms</div>', unsafe_allow_html=True,
+                )
+                c1, c2, c3 = st.columns(3)
+                c1.image(annotated, caption="Contour, bounding box and calibrated dimensions", width="stretch")
+                c2.image(record.explanation["fruit_mask"], caption="Segmented fruit mask", clamp=True, width="stretch")
+                c3.image(mask_overlay(cam_arr, record.explanation["brown_mask"]), caption="Blemish overlay", width="stretch")
+            except (ImageValidationError, ValueError, cv2.error) as exc:
+                st.error(f"Snapshot analysis failed: {exc}")
 
 
 def filter_lab_page(models) -> None:
     hero("Preprocessing & filter lab", "Interactive experimentation with classical filters, histogram equalization, morphology, and colour slicing.", "Core image processing")
-    preset_name = st.selectbox("Select sample for filter experimentation", list(SAMPLE_PRESETS.keys()))
+    preset_name = st.selectbox(
+        "Select sample for filter experimentation", list(SAMPLE_PRESETS.keys()),
+        help="Chooses the reference image used throughout the preprocessing laboratory. Recommended: test more than one ripeness class and background before adopting parameter values.",
+    )
     image_path = PROJECT_ROOT / SAMPLE_PRESETS[preset_name]
     raw_image = decode_image(image_path)
 
@@ -833,12 +969,24 @@ def filter_lab_page(models) -> None:
     st.markdown("""<div class="section-desc"><b>Why this matters:</b> Packhouse cameras introduce high-frequency sensor noise. We compare Gaussian vs. Median vs. Bilateral filtering. Notice how the <b>Bilateral Filter</b> smooths the peel surface while keeping the boundary edges of brown necrotic spots sharp!</div>""", unsafe_allow_html=True)
     f_control_col1, f_control_col2, f_control_col3 = st.columns(3)
     with f_control_col1:
-        g_k = st.slider("Gaussian kernel size", 3, 15, 5, step=2)
-        g_sigma = st.slider("Gaussian sigma", 0.5, 5.0, 1.5, step=0.5)
+        g_k = st.slider(
+            "Gaussian kernel size", 3, 15, 5, step=2,
+            help="Sets the neighbourhood used for Gaussian smoothing. Larger kernels remove more noise but blur peel boundaries and spots. Recommended: 5 for typical camera noise; use 3 for already sharp images.",
+        )
+        g_sigma = st.slider(
+            "Gaussian sigma", 0.5, 5.0, 1.5, step=0.5,
+            help="Controls Gaussian blur strength. Higher values smooth more aggressively. Recommended: 1.0–1.5 to reduce noise while retaining blemish edges.",
+        )
     with f_control_col2:
-        m_k = st.slider("Median filter size", 3, 15, 5, step=2)
+        m_k = st.slider(
+            "Median filter size", 3, 15, 5, step=2,
+            help="Removes salt-and-pepper or speckle noise while preserving edges. Larger values can erase small blemishes. Recommended: 5 for noisy camera frames and 3 for clean photographs.",
+        )
     with f_control_col3:
-        b_d = st.slider("Bilateral diameter", 3, 15, 9, step=2)
+        b_d = st.slider(
+            "Bilateral diameter", 3, 15, 9, step=2,
+            help="Sets the bilateral filter neighbourhood. It smooths peel texture while preserving strong boundaries. Recommended: 7–9; reduce to 5 when fine blemishes disappear.",
+        )
 
     gaussian_img = apply_gaussian_filter(raw_image, kernel_size=g_k, sigma=g_sigma)
     median_img = apply_median_filter(raw_image, kernel_size=m_k)
@@ -852,7 +1000,10 @@ def filter_lab_page(models) -> None:
     st.markdown("""<div class="section-desc"><b>Why this matters:</b> Conveyor lighting can be uneven. Linear stretching standardizes dynamic range, while <b>CLAHE (Contrast Limited Adaptive Histogram Equalization)</b> amplifies subtle green-yellow hue boundaries without over-amplifying background noise.</div>""", unsafe_allow_html=True)
     _, _, clahe_control_col = st.columns(3)
     with clahe_control_col:
-        clahe_clip = st.slider("CLAHE clip limit", 1.0, 6.0, 2.5, step=0.5)
+        clahe_clip = st.slider(
+            "CLAHE clip limit", 1.0, 6.0, 2.5, step=0.5,
+            help="Limits local contrast amplification. High values reveal subtle colour differences but can amplify noise. Recommended: 2.0–2.5 for uneven lighting.",
+        )
 
     stretched_img = apply_contrast_stretching(raw_image)
     clahe_img = apply_clahe(raw_image, clip_limit=clahe_clip)
@@ -881,9 +1032,18 @@ def filter_lab_page(models) -> None:
     st.markdown("""<div class="section-desc"><b>Why this matters:</b> Member A's pipeline relies on extracting necrotic spots via HSV color thresholding. Tune the sliders below to calibrate the exact Hue range and Darkness (Value) threshold to isolate brown spots under different illumination conditions.</div>""", unsafe_allow_html=True)
     t_col1, t_col2 = st.columns([1, 2])
     with t_col1:
-        brown_h_low = st.slider("Brown Hue Min", 0, 30, 3)
-        brown_h_high = st.slider("Brown Hue Max", 10, 45, 24)
-        dark_v_thresh = st.slider("Darkness Threshold (V-channel)", 20, 100, 65)
+        brown_h_low = st.slider(
+            "Brown Hue Min", 0, 30, 3,
+            help="Sets the lowest OpenCV HSV hue considered brown. Raising it rejects red/orange pixels but may miss dark lesions. Recommended: 3 under neutral white lighting.",
+        )
+        brown_h_high = st.slider(
+            "Brown Hue Max", 10, 45, 24,
+            help="Sets the highest hue considered brown. Higher values detect more yellow-brown peel and may overestimate defects. Recommended: 24; reduce toward 20 if healthy yellow peel is marked.",
+        )
+        dark_v_thresh = st.slider(
+            "Darkness Threshold (V-channel)", 20, 100, 65,
+            help="Marks sufficiently dark fruit pixels as possible necrotic spots. Higher values increase sensitivity but can include natural shadows. Recommended: 60–65 under diffuse lighting.",
+        )
     with t_col2:
         custom_masks = colour_masks(
             raw_image,
@@ -977,7 +1137,10 @@ def evaluation_page(summary, models) -> None:
     )
 
     st.subheader("Pipeline diagnostic explorer")
-    selected = st.selectbox("Pipeline", [item["algorithm"] for item in summary["results"]])
+    selected = st.selectbox(
+        "Pipeline", [item["algorithm"] for item in summary["results"]],
+        help="Chooses the trained algorithm whose confusion matrix and class metrics are displayed. Recommended: inspect the top-ranked HSV Histogram + Random Forest first, then compare weaker classes across all models.",
+    )
     item = next(result for result in summary["results"] if result["algorithm"] == selected)
     report = pd.DataFrame(item["test_metrics"]["classification_report"]).T.loc[list(CLASS_NAMES), ["precision", "recall", "f1-score", "support"]]
     plot_col, class_col = st.columns([1.05, 1])
@@ -998,12 +1161,27 @@ def training_page(models) -> None:
     hero("Model training & reproducibility", "Configure training runs, feature caching, and reproduce held-out benchmarks.", "Pipeline training")
     options = {PIPELINE_CLASSES[key]().display_name: key for key in PIPELINE_CLASSES}
     with st.form("training_configuration"):
-        selected = st.multiselect("Pipelines", list(options), default=list(options))
-        dataset = st.text_input("Dataset directory", value="fruit_dataset")
+        selected = st.multiselect(
+            "Pipelines", list(options), default=list(options),
+            help="Selects algorithms to retrain and benchmark. Recommended: train all pipelines for the final fair comparison; select one only for rapid development checks.",
+        )
+        dataset = st.text_input(
+            "Dataset directory", value="fruit_dataset",
+            help="Directory containing train, valid, and test class folders. Recommended: use fruit_dataset and keep the held-out test split unchanged to prevent data leakage.",
+        )
         first, second = st.columns(2)
-        limited = first.checkbox("Use balanced development subset", value=False)
-        limit = first.number_input("Images per class / split", 5, 5000, 30, disabled=not limited)
-        use_cache = second.checkbox("Reuse validated feature cache", value=True)
+        limited = first.checkbox(
+            "Use balanced development subset", value=False,
+            help="Uses the same limited number of images from every class for a faster trial. Recommended: enable only while debugging; disable for final accuracy and reported results.",
+        )
+        limit = first.number_input(
+            "Images per class / split", 5, 5000, 30, disabled=not limited,
+            help="Sets the per-class sample count when subset mode is enabled. Recommended: 30 for a quick smoke test, at least 200 for preliminary comparison, and the full dataset for final results.",
+        )
+        use_cache = second.checkbox(
+            "Reuse validated feature cache", value=True,
+            help="Reuses previously extracted features to speed up retraining. Recommended: keep enabled when only classifier parameters change; disable after modifying segmentation, preprocessing, or feature extraction.",
+        )
         second.caption("Disable cache after changing feature extraction logic.")
         submitted = st.form_submit_button("Validate configuration", width="stretch")
 
@@ -1065,6 +1243,7 @@ def main() -> None:
         "Dark Mode",
         key="dark_mode",
         on_change=sync_theme_preference,
+        help="Changes only the interface appearance and does not affect image processing or model accuracy. Recommended: choose whichever mode makes diagnostic masks easiest to inspect.",
     )
     apply_reference_theme(dark_mode)
     models = model_state()

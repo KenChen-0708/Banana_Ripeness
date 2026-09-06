@@ -25,7 +25,7 @@ from src.preprocessing import banana_mask, colour_masks, resize_rgb
 class HSVSegmentationSVMPipeline(BaseBananaPipeline):
     key = "hsv_svm"
     display_name = "HSV Segmentation + Brown Spot Ratio + SVM"
-    feature_version = "hsv-ratios-statistics-v1"
+    feature_version = "hsv-ratios-statistics-grabcut-v2"
     image_size = (224, 224)
     member_name = "Ronaldo Loh Yu Fei"
     task_description = "HSV Colour Segmentation + Brown Spot Ratio + Support Vector Machine"

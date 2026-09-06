@@ -24,7 +24,7 @@ from src.preprocessing import banana_mask, resize_rgb
 class GLCMMorphologyRandomForestPipeline(BaseBananaPipeline):
     key = "glcm_rf"
     display_name = "Morphology + GLCM + Random Forest"
-    feature_version = "glcm-morphology-v1"
+    feature_version = "glcm-morphology-grabcut-v2"
     image_size = (128, 128)
     member_name = "Lee Siu Yee"
     task_description = "GLCM Texture Feature Extraction + Morphological Processing + Random Forest"
