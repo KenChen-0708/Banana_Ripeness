@@ -44,7 +44,8 @@ def validate_manifest(manifest: dict[str, Any], pipeline: BaseBananaPipeline | N
     if pipeline is not None:
         if manifest.get("pipeline_key") != pipeline.key:
             raise IncompatibleModelError("The manifest belongs to a different pipeline.")
-        if manifest.get("feature_version") != pipeline.feature_version:
+        compatible_versions = {pipeline.feature_version, pipeline.feature_version.replace("-grabcut-v2", "-v1")}
+        if manifest.get("feature_version") not in compatible_versions:
             raise IncompatibleModelError("The model feature version is incompatible.")
         if tuple(manifest.get("image_size", [])) != pipeline.image_size:
             raise IncompatibleModelError("The model image size is incompatible.")
