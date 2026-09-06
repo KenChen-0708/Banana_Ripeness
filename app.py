@@ -21,6 +21,7 @@ from src.constants import (
     SAMPLE_PRESETS,
 )
 from src.exports import records_csv, records_dataframe, records_pdf
+from src.forecasting import forecast_ripeness_progress
 from src.model_store import IncompatibleModelError, discover_bundles
 from src.pipelines import PIPELINE_CLASSES
 from src.preprocessing import (
@@ -388,6 +389,28 @@ def assessment_summary(records, recommended_name: str) -> None:
     b.download_button("Export audit PDF report", records_pdf(records), "all_pipeline_assessment.pdf", "application/pdf", width="stretch")
 
 
+def render_ripeness_forecast(record, temperature_c: float, near_ethylene_fruit: bool) -> None:
+    """Render a transparent shelf-life estimate for the recommended pipeline result."""
+    blemish_ratio = float(record.explanation.get("geometry", {}).get("blemish_ratio", record.explanation.get("blemish_ratio", 0.0)))
+    forecast = forecast_ripeness_progress(
+        record.predicted_class,
+        confidence=record.confidence,
+        blemish_ratio=blemish_ratio,
+        temperature_c=temperature_c,
+        near_ethylene_fruit=near_ethylene_fruit,
+    )
+    st.markdown("### ⏳ Ripeness Progress Forecast")
+    left, middle, right = st.columns(3)
+    left.metric("Current stage", record.predicted_class.title())
+    middle.metric("Estimated window", f"{forecast.days_min}–{forecast.days_max} days")
+    right.metric("Detected blemishes", f"{blemish_ratio:.1%}")
+    st.info(f"**{forecast.headline}.** {forecast.recommendation}")
+    st.caption(f"Storage adjustment: {forecast.storage_effect}")
+    st.caption("Estimate only: this rule-based forecast uses the current image classification, visible blemishes, and selected storage conditions; it is not a trained days-to-ripeness model.")
+    if forecast.manual_review_advised:
+        st.warning("Manual review advised because the predicted condition indicates decay or the classification confidence is below 60%.")
+
+
 def render_pipeline_tab(pipeline_name: str, pipeline_records, images: dict[str, np.ndarray], accent: str, px_cm: float) -> None:
     frame = records_dataframe(pipeline_records)
     
@@ -472,7 +495,7 @@ def assessment_page(models, recommended_key: str) -> None:
         help="Start with one image, then add more at any time.",
         key="assessment_uploads",
     )
-    with st.expander("Optional benchmark sample and calibration settings"):
+    with st.expander("Optional benchmark, calibration, and forecast settings"):
         top_l, top_r = st.columns([2, 1])
         with top_l:
             preset_choice = st.selectbox(
@@ -489,6 +512,18 @@ def assessment_page(models, recommended_key: str) -> None:
                 help="Standardizes pixel dimensions to physical measurements in cm.",
             )
             st.caption("Commercial quality rules: Grade A (<5% spots), Grade B (5-15%), Grade C (15-30%), Reject (>30% or Rotten).")
+        st.markdown("##### Ripeness forecast storage conditions")
+        storage_l, storage_r = st.columns(2)
+        with storage_l:
+            storage_temperature_c = st.slider(
+                "Storage temperature (°C)", min_value=0.0, max_value=40.0, value=22.0, step=1.0,
+                help="Cool storage slows progression; warm storage speeds it up.",
+            )
+        with storage_r:
+            near_ethylene_fruit = st.checkbox(
+                "Stored near apples, avocados, or other ethylene-producing fruit",
+                help="Ethylene exposure can accelerate banana ripening.",
+            )
 
     images, errors = {}, []
     if preset_choice and preset_choice in SAMPLE_PRESETS:
@@ -552,6 +587,14 @@ def assessment_page(models, recommended_key: str) -> None:
                 </div>""",
                 unsafe_allow_html=True
             )
+
+    recommended_pipeline = models[recommended_key][0]
+    recommended_record = next(
+        record
+        for record in all_records
+        if record.algorithm == recommended_pipeline.display_name and record.filename == latest_img_name
+    )
+    render_ripeness_forecast(recommended_record, storage_temperature_c, near_ethylene_fruit)
 
     st.divider()
 
