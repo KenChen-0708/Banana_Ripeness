@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import streamlit as st
+from PIL import Image
+from streamlit_cropper import st_cropper
 
 from src.constants import (
     CLASS_NAMES,
@@ -20,6 +22,7 @@ from src.constants import (
     QUALITY_GRADES,
     SAMPLE_PRESETS,
 )
+from src.cropping import CropValidationError, crop_from_component_box
 from src.exports import records_csv, records_dataframe, records_pdf
 from src.forecasting import forecast_ripeness_progress
 from src.model_store import IncompatibleModelError, discover_bundles
@@ -411,6 +414,65 @@ def render_ripeness_forecast(record, temperature_c: float, near_ethylene_fruit: 
         st.warning("Manual review advised because the predicted condition indicates decay or the classification confidence is below 60%.")
 
 
+def _crop_source_token(filename: str, image: np.ndarray) -> tuple[str, tuple[int, ...], int]:
+    """Identify a single assessment image so stale confirmed crops are never reused."""
+    return filename, image.shape, int(image.sum())
+
+
+def render_manual_crop_control(filename: str, original_image: np.ndarray) -> np.ndarray | None:
+    """Return a confirmed manual crop, the original image, or ``None`` while awaiting confirmation."""
+    source_token = _crop_source_token(filename, original_image)
+    if st.session_state.get("assessment_crop_source") != source_token:
+        st.session_state.assessment_crop_source = source_token
+        st.session_state.assessment_confirmed_crop = None
+
+    mode = st.radio(
+        "Crop Banana Before Assessment",
+        ("Use original image", "Crop banana before assessment"),
+        horizontal=True,
+        key="assessment_crop_mode",
+        help="Cropping only changes the input image. Existing banana segmentation and all four model pipelines still run normally.",
+    )
+    if mode == "Use original image":
+        st.session_state.assessment_confirmed_crop = None
+        return original_image
+
+    st.caption("Drag and resize the rectangle around the banana. The original image remains unchanged until you confirm the crop.")
+    original_col, crop_col = st.columns(2)
+    with original_col:
+        st.image(original_image, caption="Original image", width="stretch")
+    with crop_col:
+        crop_result = st_cropper(
+            Image.fromarray(original_image),
+            realtime_update=True,
+            box_color="#F4B942",
+            aspect_ratio=None,
+            return_type="both",
+            key=f"assessment_cropper_{source_token[0]}",
+        )
+        _, component_box = crop_result
+        try:
+            pending_crop = crop_from_component_box(original_image, component_box)
+            st.image(pending_crop, caption="Cropped preview", width="stretch")
+        except CropValidationError as exc:
+            pending_crop = None
+            st.error(f"Invalid crop: {exc}")
+
+    confirm_col, reset_col, _ = st.columns([1, 1, 2])
+    if confirm_col.button("Confirm Crop", type="primary", disabled=pending_crop is None, key="confirm_assessment_crop"):
+        st.session_state.assessment_confirmed_crop = pending_crop.copy()
+    if reset_col.button("Reset Crop", key="reset_assessment_crop"):
+        st.session_state.assessment_confirmed_crop = None
+        st.rerun()
+
+    confirmed_crop = st.session_state.get("assessment_confirmed_crop")
+    if confirmed_crop is None:
+        st.info("Confirm a valid crop before assessment. Predictions are paused while manual crop mode is active.")
+        return None
+    st.success("Crop confirmed. The cropped image will be passed to the existing segmentation and all four assessment pipelines.")
+    return confirmed_crop
+
+
 def render_pipeline_tab(pipeline_name: str, pipeline_records, images: dict[str, np.ndarray], accent: str, px_cm: float) -> None:
     frame = records_dataframe(pipeline_records)
     
@@ -546,6 +608,15 @@ def assessment_page(models, recommended_key: str) -> None:
 
     if not images:
         return
+
+    if len(images) == 1:
+        filename, original_image = next(iter(images.items()))
+        analysis_image = render_manual_crop_control(filename, original_image)
+        if analysis_image is None:
+            return
+        images = {filename: analysis_image}
+    else:
+        st.info("Manual cropping is available for a single-image assessment. Batch processing continues with the original uploaded images.")
 
     all_records, completed = [], 0
     total = len(images) * len(models)

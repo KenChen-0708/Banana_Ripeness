@@ -12,6 +12,7 @@ A Streamlit application that compares four classical image-processing pipelines 
   4. *Morphology + GLCM Texture + Random Forest*
 - **Multimodal Ingestion**:
   - Single & batch image upload.
+  - Optional single-image manual banana crop before assessment; the confirmed crop is passed through the existing segmentation and model pipelines.
   - 1-click representative benchmark sample presets.
   - Video stream ingestion (`.mp4`, `.avi`) for conveyor belt monitoring with temporal progression chart.
   - Live webcam / camera snapshot classification.
