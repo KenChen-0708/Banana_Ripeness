@@ -473,6 +473,22 @@ def render_manual_crop_control(filename: str, original_image: np.ndarray) -> np.
     return confirmed_crop
 
 
+def render_uploaded_image_preview(images: dict[str, np.ndarray]) -> None:
+    """Show decoded originals before optional cropping or assessment processing begins."""
+    if len(images) == 1:
+        filename, image = next(iter(images.items()))
+        st.markdown("### Uploaded Image Preview")
+        st.image(image, caption=f"Original upload: {filename}", width="stretch")
+        return
+
+    st.markdown("### Uploaded Images Preview")
+    st.caption(f"{len(images)} original images ready for batch assessment.")
+    columns = st.columns(min(3, len(images)))
+    for index, (filename, image) in enumerate(images.items()):
+        with columns[index % len(columns)]:
+            st.image(image, caption=filename, width="stretch")
+
+
 def render_pipeline_tab(pipeline_name: str, pipeline_records, images: dict[str, np.ndarray], accent: str, px_cm: float) -> None:
     frame = records_dataframe(pipeline_records)
     
@@ -608,6 +624,8 @@ def assessment_page(models, recommended_key: str) -> None:
 
     if not images:
         return
+
+    render_uploaded_image_preview(images)
 
     if len(images) == 1:
         filename, original_image = next(iter(images.items()))
