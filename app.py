@@ -617,32 +617,11 @@ def assessment_page(models, recommended_key: str) -> None:
         help="Selects one or more banana photographs for comparison across every trained pipeline. Recommended: one banana per image, sharp focus, diffuse lighting, plain contrasting background, minimal shadow, and at least 224 × 224 pixels.",
         key="assessment_uploads",
     )
-<<<<<<< Updated upstream
     preset_choice = st.selectbox(
         "Quick-load benchmark preset samples",
         ["-- Choose a preset or upload your own files --"] + list(SAMPLE_PRESETS.keys()),
-        help="Optional: load one representative project image instead of uploading a file.",
+        help="Loads a representative project image without uploading a file. Recommended: use presets for demonstrations, but use your own well-lit banana photograph for a real assessment.",
     )
-=======
-    with st.expander("Optional benchmark sample and calibration settings"):
-        top_l, top_r = st.columns([2, 1])
-        with top_l:
-            preset_choice = st.selectbox(
-                "Quick-load benchmark preset samples",
-                ["-- Choose a preset or upload your own files --"] + list(SAMPLE_PRESETS.keys()),
-                help="Loads a representative project image without uploading a file. Recommended: use presets for demonstrations, but use your own well-lit banana photograph for a real assessment.",
-            )
-        with top_r:
-            px_cm = st.slider(
-                "Spatial calibration (pixels / cm)",
-                min_value=1.0,
-                max_value=40.0,
-                value=DEFAULT_PIXELS_PER_CM,
-                step=0.5,
-                help="Converts pixel measurements to centimetres. Measure a known reference object in the same image plane and enter pixels ÷ reference length in cm. Recommended: calibrate each camera setup; use 10 px/cm only as a demonstration default.",
-            )
-            st.caption("Commercial quality rules: Grade A (<5% spots), Grade B (5-15%), Grade C (15-30%), Reject (>30% or Rotten).")
->>>>>>> Stashed changes
 
     images, image_metadata, errors = {}, {}, []
     if preset_choice and preset_choice in SAMPLE_PRESETS:
@@ -686,7 +665,7 @@ def assessment_page(models, recommended_key: str) -> None:
             max_value=40.0,
             value=DEFAULT_PIXELS_PER_CM,
             step=0.5,
-            help="Standardizes pixel dimensions to physical measurements in cm.",
+            help="Converts pixel measurements to centimetres. Measure a known reference object in the same image plane and enter pixels ÷ reference length in cm. Recommended: calibrate each camera setup; use 10 px/cm only as a demonstration default.",
         )
         st.caption("Commercial quality rules: Grade A (<5% spots), Grade B (5-15%), Grade C (15-30%), Reject (>30% or Rotten).")
         st.markdown("##### Ripeness forecast storage conditions")
@@ -694,12 +673,12 @@ def assessment_page(models, recommended_key: str) -> None:
         with storage_l:
             storage_temperature_c = st.slider(
                 "Storage temperature (°C)", min_value=0.0, max_value=40.0, value=22.0, step=1.0,
-                help="Cool storage slows progression; warm storage speeds it up.",
+                help="Controls the forecasted ripening rate because cool storage slows progression and warmth accelerates it. Recommended: enter the measured storage temperature; 13–15°C is suitable for slowing ripening, while 22°C represents typical room storage.",
             )
         with storage_r:
             near_ethylene_fruit = st.checkbox(
                 "Stored near apples, avocados, or other ethylene-producing fruit",
-                help="Ethylene exposure can accelerate banana ripening.",
+                help="Adjusts the forecast for nearby ethylene-producing fruit, which accelerates ripening. Recommended: enable only when bananas are stored close to apples, avocados, tomatoes, or other ethylene sources.",
             )
 
     action_col, _ = st.columns([1, 3])

@@ -1,11 +1,6 @@
-<<<<<<< Updated upstream
-streamlit>=1.42,<2
+streamlit>=1.51,<2
 streamlit-cropper>=0.3.1,<1
 streamlit-webrtc>=0.77,<1
-=======
-streamlit>=1.51,<2
-streamlit-webrtc>=0.63,<1
->>>>>>> Stashed changes
 opencv-python-headless>=4.10,<5
 numpy>=2.0,<3
 pandas>=2.2,<3
