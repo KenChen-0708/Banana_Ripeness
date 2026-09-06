@@ -6,7 +6,7 @@ from streamlit.testing.v1 import AppTest
 def test_dashboard_starts_without_exceptions():
     app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run(timeout=60)
     assert not app.exception
-    assert any("Assessment studio" in markdown.value for markdown in app.markdown)
+    assert any("Banana Ripeness" in markdown.value for markdown in app.markdown)
     assert app.sidebar.radio
 
 
@@ -59,6 +59,7 @@ def test_assessment_crop_supports_per_image_selection_and_mixed_batch_inputs():
     assert "analysis_images_for_assessment(images, crop_states)" in source
     assert "for filename, image in analysis_images.items()" in source
     assert "st.image(pending_crop, width=400)" in source
+    assert "st.image(gallery_thumbnail(image), width=\"stretch\")" in source
 
 
 def test_inspection_selection_reuses_matching_saved_assessment_results():
@@ -69,3 +70,11 @@ def test_inspection_selection_reuses_matching_saved_assessment_results():
     assert 'saved_result["input_key"] != input_key' in source
     assert 'all_records = saved_result["records"]' in source
     assert "Deep-Dive Pipeline Explorer" in source
+
+
+def test_model_loader_cache_is_invalidated_when_artifacts_are_retrained():
+    source = (Path(__file__).resolve().parents[1] / "app.py").read_text(encoding="utf-8")
+
+    assert "def load_models(model_dir: str, artifact_token" in source
+    assert "path.stat().st_mtime_ns" in source
+    assert "load_models(str(model_dir), artifact_token)" in source
