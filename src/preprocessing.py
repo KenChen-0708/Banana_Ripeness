@@ -118,54 +118,98 @@ def apply_morphology(
 
 
 def banana_mask(image: np.ndarray, size: tuple[int, int] = (224, 224)) -> np.ndarray:
-    """Estimate the largest fruit-like foreground region reproducibly.
+    """Segment the most plausible banana using colour seeds and GrabCut refinement.
 
-    The border colour models the background. Saturated green/yellow/brown pixels
-    supplement the colour-distance mask, followed by morphological clean-up.
+    Banana-coloured pixels provide conservative foreground seeds.  GrabCut is
+    restricted to a narrow band around those seeds so that dark peel edges and
+    blemishes can be recovered without absorbing tables, paper, or black corners.
+    A zero mask is returned when no credible fruit region exists.
     """
     rgb = resize_rgb(image, size)
-    lab = cv2.cvtColor(rgb, cv2.COLOR_RGB2LAB).astype(np.float32)
-    hsv = cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV)
+    denoised = cv2.medianBlur(rgb, 5)
+    smoothed = cv2.bilateralFilter(denoised, d=7, sigmaColor=45, sigmaSpace=45)
+    lab = cv2.cvtColor(smoothed, cv2.COLOR_RGB2LAB)
+    hsv = cv2.cvtColor(smoothed, cv2.COLOR_RGB2HSV)
+    h, s, v = cv2.split(hsv)
+    l_channel, a_channel, b_channel = cv2.split(lab)
 
-    border = max(2, min(rgb.shape[:2]) // 16)
-    border_pixels = np.concatenate(
-        [lab[:border].reshape(-1, 3), lab[-border:].reshape(-1, 3), lab[:, :border].reshape(-1, 3), lab[:, -border:].reshape(-1, 3)]
-    )
-    background = np.median(border_pixels, axis=0)
-    colour_distance = np.linalg.norm(lab - background, axis=2)
-    saturation = hsv[:, :, 1]
-    value = hsv[:, :, 2]
-    hue = hsv[:, :, 0]
+    # Covers green, yellow, brown and dark rotten peel while rejecting neutral
+    # white/grey/black backgrounds. LAB warmth rescues low-saturation green peel.
+    chromatic = (s >= 32) & (v >= 35) & (h <= 95)
+    warm_lab = (b_channel >= 138) & ((b_channel.astype(np.int16) - a_channel.astype(np.int16)) >= 10) & (s >= 10) & (v >= 45)
+    dark_brown = (v < 120) & (s >= 30) & (h <= 35) & ((a_channel >= 132) | (b_channel >= 132))
+    seed = ((chromatic | warm_lab | dark_brown) & (l_channel >= 12)).astype(np.uint8) * 255
 
-    b_channel = lab[:, :, 2]
-    chromatic_fruit = (saturation >= 30) & (value >= 25) & (hue <= 95)
-    
-    # Adaptive background & shadow suppression
-    if background[2] < 126:  # Cool / blue / lilac background (b* < 126)
-        # Fruit must have warm/yellow/green tone (b* >= 132) to reject cool cast shadows
-        candidate = (b_channel >= 132) & (colour_distance >= 18) & (value >= 25)
-    elif background[0] < 120:  # Dark / black surface (L* < 120)
-        is_shadow = (value < background[0] + 15) & (saturation < 30)
-        candidate = ((colour_distance >= 22) & ~is_shadow) | chromatic_fruit
-        candidate = candidate & (value >= 25) & ~is_shadow
-    else:  # Standard light / white studio background
-        candidate = ((colour_distance >= 18) | chromatic_fruit) & (value >= 18)
+    close_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
+    open_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    seed = cv2.morphologyEx(seed, cv2.MORPH_CLOSE, close_kernel, iterations=2)
+    seed = cv2.morphologyEx(seed, cv2.MORPH_OPEN, open_kernel, iterations=1)
+    seed = _best_foreground_component(seed)
+    seed_area = int(np.count_nonzero(seed))
+    if seed_area < int(seed.size * 0.01):
+        return np.zeros(seed.shape, dtype=np.uint8)
 
-    mask = (candidate.astype(np.uint8) * 255)
+    # Permit GrabCut to grow only near the colour-seeded object.  This recovers
+    # black tips and blemished boundaries without leaking across the background.
+    band_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (17, 17))
+    probable_region = cv2.dilate(seed, band_kernel, iterations=2)
+    sure_foreground = cv2.erode(seed, open_kernel, iterations=2)
+    gc_mask = np.full(seed.shape, cv2.GC_BGD, dtype=np.uint8)
+    gc_mask[probable_region > 0] = cv2.GC_PR_BGD
+    gc_mask[seed > 0] = cv2.GC_PR_FGD
+    gc_mask[sure_foreground > 0] = cv2.GC_FGD
+    try:
+        cv2.setRNGSeed(0)
+        bg_model = np.zeros((1, 65), np.float64)
+        fg_model = np.zeros((1, 65), np.float64)
+        cv2.grabCut(smoothed, gc_mask, None, bg_model, fg_model, 1, cv2.GC_INIT_WITH_MASK)
+        mask = np.where((gc_mask == cv2.GC_FGD) | (gc_mask == cv2.GC_PR_FGD), 255, 0).astype(np.uint8)
+    except cv2.error:
+        mask = seed
 
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
-
-    count, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
-    if count > 1:
-        largest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
-        mask = np.where(labels == largest, 255, 0).astype(np.uint8)
-
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, close_kernel, iterations=2)
+    mask = _best_foreground_component(mask)
+    mask = _fill_mask_holes(mask)
     area_ratio = float(np.count_nonzero(mask)) / mask.size
-    if area_ratio < 0.015:
-        return np.full(mask.shape, 255, dtype=np.uint8)
+    if not 0.015 <= area_ratio <= 0.92:
+        seed = _fill_mask_holes(seed)
+        seed_ratio = float(np.count_nonzero(seed)) / seed.size
+        return seed if 0.015 <= seed_ratio <= 0.92 else np.zeros(mask.shape, dtype=np.uint8)
     return mask
+
+
+def _best_foreground_component(mask: np.ndarray) -> np.ndarray:
+    """Keep the large central elongated component and reject small clutter."""
+    count, labels, stats, centroids = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    if count <= 1:
+        return np.zeros(mask.shape, dtype=np.uint8)
+    height, width = mask.shape
+    image_centre = np.array([width / 2.0, height / 2.0])
+    best_label = 0
+    best_score = -1.0
+    for label in range(1, count):
+        area = float(stats[label, cv2.CC_STAT_AREA])
+        if area < mask.size * 0.005:
+            continue
+        component_width = max(1.0, float(stats[label, cv2.CC_STAT_WIDTH]))
+        component_height = max(1.0, float(stats[label, cv2.CC_STAT_HEIGHT]))
+        elongation = max(component_width, component_height) / min(component_width, component_height)
+        centre_distance = np.linalg.norm(centroids[label] - image_centre) / np.linalg.norm(image_centre)
+        centrality = max(0.2, 1.0 - 0.45 * centre_distance)
+        score = area * centrality * min(1.6, 0.85 + 0.15 * elongation)
+        if score > best_score:
+            best_label, best_score = label, score
+    return np.where(labels == best_label, 255, 0).astype(np.uint8) if best_label else np.zeros(mask.shape, dtype=np.uint8)
+
+
+def _fill_mask_holes(mask: np.ndarray) -> np.ndarray:
+    """Fill interior blemish holes while preserving the external concave boundary."""
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return np.zeros(mask.shape, dtype=np.uint8)
+    result = np.zeros(mask.shape, dtype=np.uint8)
+    cv2.drawContours(result, [max(contours, key=cv2.contourArea)], -1, 255, thickness=cv2.FILLED)
+    return result
 
 
 def colour_masks(

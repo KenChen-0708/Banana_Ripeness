@@ -26,7 +26,7 @@ from src.preprocessing import banana_mask, resize_rgb
 class LabKMeansKNNPipeline(BaseBananaPipeline):
     key = "lab_knn"
     display_name = "L*a*b* K-Means + KNN"
-    feature_version = "lab-kmeans4-v1"
+    feature_version = "lab-kmeans4-grabcut-v2"
     image_size = (96, 96)
     cluster_count = 4
     member_name = "Lim Tze Chuen"
