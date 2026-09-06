@@ -286,6 +286,12 @@ def apply_reference_theme(dark_mode: bool = True) -> None:
     .st-key-assessment_uploads [data-testid="stFileUploaderDropzone"] button:has([data-testid="stMarkdownContainer"]) [data-testid="stIconMaterial"],.st-key-assessment_uploads [data-testid="stFileUploaderDropzone"] button:has([data-testid="stMarkdownContainer"]) [data-testid="stMarkdownContainer"] {display:none!important}
     .st-key-assessment_uploads [data-testid="stFileUploaderDropzone"] button:has([data-testid="stMarkdownContainer"]):before {content:"image";font-family:"Material Symbols Rounded";font-size:18px!important;font-weight:500;color:#172015!important;line-height:1}.st-key-assessment_uploads [data-testid="stFileUploaderDropzone"] button:has([data-testid="stMarkdownContainer"]):after {content:"Browse Image";font-size:14px!important;color:#172015!important;line-height:1}
     [data-testid="stFileUploaderDropzone"] {background:var(--surface)!important;border-color:var(--line)!important}[data-testid="stFileUploaderDropzone"] * {color:var(--text)}
+    [data-testid="stVerticalBlockBorderWrapper"] {background:linear-gradient(145deg,rgba(17,35,36,.82),rgba(10,25,27,.8));border-color:var(--line)!important;border-radius:16px!important}
+    .preview-card-title,.crop-card-title {font-size:1.08rem;font-weight:760;color:var(--text);margin:0 0 .15rem}.preview-card-title .material-symbols-rounded,.crop-card-title .material-symbols-rounded {color:var(--green);vertical-align:-4px;margin-right:8px}
+    .preview-card-subtitle,.crop-card-subtitle {font-size:.84rem;color:var(--muted);margin:0 0 1rem}
+    .preview-meta {display:grid;gap:13px;padding:8px 4px}.preview-meta-row {display:grid;grid-template-columns:24px 110px 1fr;gap:8px;align-items:center;font-size:.9rem}.preview-meta-row .material-symbols-rounded {color:var(--muted);font-size:19px}.preview-meta-label {color:var(--muted)}.preview-meta-value {font-weight:700;color:var(--text);word-break:break-word}
+    .st-key-assessment_crop_mode [role="radiogroup"] {display:grid!important;grid-template-columns:1fr 1fr;gap:12px!important}.st-key-assessment_crop_mode [role="radiogroup"] label {min-height:72px;border:1px solid var(--line)!important;border-radius:12px!important;padding:16px!important;background:rgba(5,17,18,.22)!important}.st-key-assessment_crop_mode [role="radiogroup"] label:has(input:checked) {border-color:var(--green)!important;background:rgba(92,205,119,.08)!important;box-shadow:inset 0 0 0 1px rgba(125,229,142,.16)}.st-key-assessment_crop_mode [role="radiogroup"] p {font-weight:700!important}
+    .st-key-run_assessment_button button {min-height:48px!important;font-size:1rem!important;font-weight:800!important}
     [data-testid="stProgressBar"]>div>div {background:var(--green)!important}
     button[kind="secondary"],button[kind="primary"],.stDownloadButton button {color:#071114!important;background:var(--green)!important;border:1px solid var(--green)!important;border-radius:10px!important}
     button[kind="secondary"] *,button[kind="primary"] *,.stDownloadButton button * {color:#071114!important;fill:#071114!important}
@@ -419,6 +425,16 @@ def _crop_source_token(filename: str, image: np.ndarray) -> tuple[str, tuple[int
     return filename, image.shape, int(image.sum())
 
 
+def _format_file_size(size_bytes: int | None) -> str:
+    if size_bytes is None:
+        return "Not available"
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    if size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.0f} KB"
+    return f"{size_bytes / (1024 * 1024):.1f} MB"
+
+
 def render_manual_crop_control(filename: str, original_image: np.ndarray) -> np.ndarray | None:
     """Return a confirmed manual crop, the original image, or ``None`` while awaiting confirmation."""
     source_token = _crop_source_token(filename, original_image)
@@ -426,37 +442,37 @@ def render_manual_crop_control(filename: str, original_image: np.ndarray) -> np.
         st.session_state.assessment_crop_source = source_token
         st.session_state.assessment_confirmed_crop = None
 
-    mode = st.radio(
-        "Crop Banana Before Assessment",
-        ("Use original image", "Crop banana before assessment"),
-        horizontal=True,
-        key="assessment_crop_mode",
-        help="Cropping only changes the input image. Existing banana segmentation and all four model pipelines still run normally.",
-    )
+    with st.container(border=True):
+        st.markdown('<p class="crop-card-title"><span class="material-symbols-rounded">crop</span>Crop Banana Before Assessment <small>(Optional)</small></p>', unsafe_allow_html=True)
+        st.markdown('<p class="crop-card-subtitle">If automatic segmentation is not accurate, manually crop a region that focuses on the banana.</p>', unsafe_allow_html=True)
+        mode = st.radio(
+            "Crop Banana Before Assessment",
+            ("Use original image", "Manually crop banana"),
+            horizontal=True,
+            key="assessment_crop_mode",
+            label_visibility="collapsed",
+            help="Cropping only changes the input image. Existing banana segmentation and all four model pipelines still run normally.",
+        )
     if mode == "Use original image":
         st.session_state.assessment_confirmed_crop = None
         return original_image
 
-    st.caption("Drag and resize the rectangle around the banana. The original image remains unchanged until you confirm the crop.")
-    original_col, crop_col = st.columns(2)
-    with original_col:
-        st.image(original_image, caption="Original image", width="stretch")
-    with crop_col:
-        crop_result = st_cropper(
-            Image.fromarray(original_image),
-            realtime_update=True,
-            box_color="#F4B942",
-            aspect_ratio=None,
-            return_type="both",
-            key=f"assessment_cropper_{source_token[0]}",
-        )
-        _, component_box = crop_result
-        try:
-            pending_crop = crop_from_component_box(original_image, component_box)
-            st.image(pending_crop, caption="Cropped preview", width="stretch")
-        except CropValidationError as exc:
-            pending_crop = None
-            st.error(f"Invalid crop: {exc}")
+    st.caption("Drag and resize the rectangle around the banana. The original upload is shown above; this editor is the only image needed here.")
+    crop_result = st_cropper(
+        Image.fromarray(original_image),
+        realtime_update=True,
+        box_color="#F4B942",
+        aspect_ratio=None,
+        return_type="both",
+        key=f"assessment_cropper_{source_token[0]}",
+    )
+    _, component_box = crop_result
+    try:
+        pending_crop = crop_from_component_box(original_image, component_box)
+        st.image(pending_crop, caption="Cropped preview", width="stretch")
+    except CropValidationError as exc:
+        pending_crop = None
+        st.error(f"Invalid crop: {exc}")
 
     confirm_col, reset_col, _ = st.columns([1, 1, 2])
     if confirm_col.button("Confirm Crop", type="primary", disabled=pending_crop is None, key="confirm_assessment_crop"):
@@ -473,20 +489,35 @@ def render_manual_crop_control(filename: str, original_image: np.ndarray) -> np.
     return confirmed_crop
 
 
-def render_uploaded_image_preview(images: dict[str, np.ndarray]) -> None:
+def render_uploaded_image_preview(images: dict[str, np.ndarray], image_metadata: dict[str, int | None]) -> None:
     """Show decoded originals before optional cropping or assessment processing begins."""
     if len(images) == 1:
         filename, image = next(iter(images.items()))
-        st.markdown("### Uploaded Image Preview")
-        st.image(image, caption=f"Original upload: {filename}", width="stretch")
+        with st.container(border=True):
+            st.markdown('<p class="preview-card-title"><span class="material-symbols-rounded">image</span>Uploaded Image Preview</p>', unsafe_allow_html=True)
+            st.markdown('<p class="preview-card-subtitle">This is the original image you uploaded.</p>', unsafe_allow_html=True)
+            image_col, metadata_col = st.columns([1, 1.75])
+            with image_col:
+                st.image(image, caption="Original image", width="stretch")
+            with metadata_col:
+                height, width = image.shape[:2]
+                st.markdown(
+                    f'''<div class="preview-meta">
+                    <div class="preview-meta-row"><span class="material-symbols-rounded">description</span><span class="preview-meta-label">Filename</span><span class="preview-meta-value">{filename}</span></div>
+                    <div class="preview-meta-row"><span class="material-symbols-rounded">photo_size_select_large</span><span class="preview-meta-label">Dimensions</span><span class="preview-meta-value">{width} × {height} px</span></div>
+                    <div class="preview-meta-row"><span class="material-symbols-rounded">data_object</span><span class="preview-meta-label">File size</span><span class="preview-meta-value">{_format_file_size(image_metadata.get(filename))}</span></div>
+                    </div>''',
+                    unsafe_allow_html=True,
+                )
         return
 
-    st.markdown("### Uploaded Images Preview")
-    st.caption(f"{len(images)} original images ready for batch assessment.")
-    columns = st.columns(min(3, len(images)))
-    for index, (filename, image) in enumerate(images.items()):
-        with columns[index % len(columns)]:
-            st.image(image, caption=filename, width="stretch")
+    with st.container(border=True):
+        st.markdown('<p class="preview-card-title"><span class="material-symbols-rounded">collections</span>Uploaded Images Preview</p>', unsafe_allow_html=True)
+        st.markdown(f'<p class="preview-card-subtitle">{len(images)} original images ready for batch assessment.</p>', unsafe_allow_html=True)
+        columns = st.columns(min(3, len(images)))
+        for index, (filename, image) in enumerate(images.items()):
+            with columns[index % len(columns)]:
+                st.image(image, caption=f"{filename} · {_format_file_size(image_metadata.get(filename))}", width="stretch")
 
 
 def render_pipeline_tab(pipeline_name: str, pipeline_records, images: dict[str, np.ndarray], accent: str, px_cm: float) -> None:
@@ -573,23 +604,57 @@ def assessment_page(models, recommended_key: str) -> None:
         help="Start with one image, then add more at any time.",
         key="assessment_uploads",
     )
+    preset_choice = st.selectbox(
+        "Quick-load benchmark preset samples",
+        ["-- Choose a preset or upload your own files --"] + list(SAMPLE_PRESETS.keys()),
+        help="Optional: load one representative project image instead of uploading a file.",
+    )
+
+    images, image_metadata, errors = {}, {}, []
+    if preset_choice and preset_choice in SAMPLE_PRESETS:
+        preset_path = PROJECT_ROOT / SAMPLE_PRESETS[preset_choice]
+        if preset_path.exists():
+            try:
+                images[preset_choice] = decode_image(preset_path)
+                image_metadata[preset_choice] = preset_path.stat().st_size
+            except ImageValidationError as exc:
+                errors.append(f"{preset_choice}: {exc}")
+
+    if uploads:
+        for upload in uploads:
+            try:
+                images[upload.name] = decode_image(upload.getvalue())
+                image_metadata[upload.name] = upload.size
+            except ImageValidationError as exc:
+                errors.append(f"{upload.name}: {exc}")
+
+    if errors:
+        st.warning("Some files were skipped:\n\n" + "\n\n".join(errors))
+
+    if not images:
+        return
+
+    render_uploaded_image_preview(images, image_metadata)
+
+    if len(images) == 1:
+        filename, original_image = next(iter(images.items()))
+        analysis_image = render_manual_crop_control(filename, original_image)
+        if analysis_image is None:
+            return
+        images = {filename: analysis_image}
+    else:
+        st.info("Manual cropping is available for a single-image assessment. Batch processing continues with the original uploaded images.")
+
     with st.expander("Optional benchmark, calibration, and forecast settings"):
-        top_l, top_r = st.columns([2, 1])
-        with top_l:
-            preset_choice = st.selectbox(
-                "Quick-load benchmark preset samples",
-                ["-- Choose a preset or upload your own files --"] + list(SAMPLE_PRESETS.keys()),
-            )
-        with top_r:
-            px_cm = st.slider(
-                "Spatial calibration (pixels / cm)",
-                min_value=1.0,
-                max_value=40.0,
-                value=DEFAULT_PIXELS_PER_CM,
-                step=0.5,
-                help="Standardizes pixel dimensions to physical measurements in cm.",
-            )
-            st.caption("Commercial quality rules: Grade A (<5% spots), Grade B (5-15%), Grade C (15-30%), Reject (>30% or Rotten).")
+        px_cm = st.slider(
+            "Spatial calibration (pixels / cm)",
+            min_value=1.0,
+            max_value=40.0,
+            value=DEFAULT_PIXELS_PER_CM,
+            step=0.5,
+            help="Standardizes pixel dimensions to physical measurements in cm.",
+        )
+        st.caption("Commercial quality rules: Grade A (<5% spots), Grade B (5-15%), Grade C (15-30%), Reject (>30% or Rotten).")
         st.markdown("##### Ripeness forecast storage conditions")
         storage_l, storage_r = st.columns(2)
         with storage_l:
@@ -603,38 +668,11 @@ def assessment_page(models, recommended_key: str) -> None:
                 help="Ethylene exposure can accelerate banana ripening.",
             )
 
-    images, errors = {}, []
-    if preset_choice and preset_choice in SAMPLE_PRESETS:
-        preset_path = PROJECT_ROOT / SAMPLE_PRESETS[preset_choice]
-        if preset_path.exists():
-            try:
-                images[preset_choice] = decode_image(preset_path)
-            except ImageValidationError as exc:
-                errors.append(f"{preset_choice}: {exc}")
-
-    if uploads:
-        for upload in uploads:
-            try:
-                images[upload.name] = decode_image(upload.getvalue())
-            except ImageValidationError as exc:
-                errors.append(f"{upload.name}: {exc}")
-
-    if errors:
-        st.warning("Some files were skipped:\n\n" + "\n\n".join(errors))
-
-    if not images:
+    action_col, _ = st.columns([1, 3])
+    with action_col:
+        run_assessment = st.button("Run Assessment  →", type="primary", key="run_assessment_button", width="stretch")
+    if not run_assessment:
         return
-
-    render_uploaded_image_preview(images)
-
-    if len(images) == 1:
-        filename, original_image = next(iter(images.items()))
-        analysis_image = render_manual_crop_control(filename, original_image)
-        if analysis_image is None:
-            return
-        images = {filename: analysis_image}
-    else:
-        st.info("Manual cropping is available for a single-image assessment. Batch processing continues with the original uploaded images.")
 
     all_records, completed = [], 0
     total = len(images) * len(models)
