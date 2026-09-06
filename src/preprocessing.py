@@ -117,6 +117,11 @@ def apply_morphology(
     return cv2.morphologyEx(mask, morph_op, kernel, iterations=iterations)
 
 
+def fill_mask_holes(mask: np.ndarray) -> np.ndarray:
+    """Fill internal holes (e.g. specular glare or voids) inside binary contours."""
+    return _fill_mask_holes(mask)
+
+
 def banana_mask(image: np.ndarray, size: tuple[int, int] = (224, 224)) -> np.ndarray:
     """Segment the most plausible banana using colour seeds and GrabCut refinement.
 
@@ -171,22 +176,21 @@ def banana_mask(image: np.ndarray, size: tuple[int, int] = (224, 224)) -> np.nda
     mask = _best_foreground_component(mask)
     mask = _fill_mask_holes(mask)
     area_ratio = float(np.count_nonzero(mask)) / mask.size
-    if not 0.015 <= area_ratio <= 0.92:
+    if not (0.015 <= area_ratio <= 0.92):
         seed = _fill_mask_holes(seed)
         seed_ratio = float(np.count_nonzero(seed)) / seed.size
-        return seed if 0.015 <= seed_ratio <= 0.92 else np.zeros(mask.shape, dtype=np.uint8)
+        return seed if seed_ratio >= 0.015 else np.zeros(mask.shape, dtype=np.uint8)
     return mask
 
 
 def _best_foreground_component(mask: np.ndarray) -> np.ndarray:
-    """Keep the large central elongated component and reject small clutter."""
+    """Keep the large central elongated component and significant cluster fingers, rejecting small clutter."""
     count, labels, stats, centroids = cv2.connectedComponentsWithStats(mask, connectivity=8)
     if count <= 1:
         return np.zeros(mask.shape, dtype=np.uint8)
     height, width = mask.shape
     image_centre = np.array([width / 2.0, height / 2.0])
-    best_label = 0
-    best_score = -1.0
+    scores = {}
     for label in range(1, count):
         area = float(stats[label, cv2.CC_STAT_AREA])
         if area < mask.size * 0.005:
@@ -197,9 +201,18 @@ def _best_foreground_component(mask: np.ndarray) -> np.ndarray:
         centre_distance = np.linalg.norm(centroids[label] - image_centre) / np.linalg.norm(image_centre)
         centrality = max(0.2, 1.0 - 0.45 * centre_distance)
         score = area * centrality * min(1.6, 0.85 + 0.15 * elongation)
-        if score > best_score:
-            best_label, best_score = label, score
-    return np.where(labels == best_label, 255, 0).astype(np.uint8) if best_label else np.zeros(mask.shape, dtype=np.uint8)
+        scores[label] = score
+
+    if not scores:
+        return np.zeros(mask.shape, dtype=np.uint8)
+
+    best_score = max(scores.values())
+    result = np.zeros(mask.shape, dtype=np.uint8)
+    threshold = max(0.15 * best_score, 50.0)
+    for label, score in scores.items():
+        if score >= threshold:
+            result[labels == label] = 255
+    return result
 
 
 def _fill_mask_holes(mask: np.ndarray) -> np.ndarray:
@@ -208,7 +221,7 @@ def _fill_mask_holes(mask: np.ndarray) -> np.ndarray:
     if not contours:
         return np.zeros(mask.shape, dtype=np.uint8)
     result = np.zeros(mask.shape, dtype=np.uint8)
-    cv2.drawContours(result, [max(contours, key=cv2.contourArea)], -1, 255, thickness=cv2.FILLED)
+    cv2.drawContours(result, contours, -1, 255, thickness=cv2.FILLED)
     return result
 
 
