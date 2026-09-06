@@ -23,7 +23,7 @@ from src.preprocessing import (
     draw_annotated_geometry,
 )
 from src.types import PredictionRecord
-from src.video import process_video
+from src.video import VideoValidationError, probe_video, process_video
 
 
 @pytest.fixture
@@ -108,9 +108,42 @@ def test_video_processing_synthetic():
         assert res.frames_analyzed > 0
         assert not res.timeline_df.empty
         assert "blemish_percent" in res.timeline_df.columns
+        assert "confidence_percent" in res.timeline_df.columns
+        assert "source_frame_index" in res.timeline_df.columns
+        assert "detection_valid" in res.timeline_df.columns
+        assert "object_id" in res.timeline_df.columns
         assert "quality_grade" in res.timeline_df.columns
+        assert res.effective_sample_fps > 0
+        assert res.analysis_fps > 0
+        assert res.mean_processing_time_ms >= 0
+        assert res.metadata.width == 320
+        assert res.metadata.height == 240
+        assert res.annotated_video_bytes
     finally:
         Path(video_path).unlink(missing_ok=True)
+
+
+def test_probe_video_rejects_invalid_bytes():
+    with pytest.raises(VideoValidationError):
+        probe_video(b"not a video", "broken.avi")
+
+
+def test_video_frame_cap_is_reported():
+    pipeline = create_pipeline("hsv_rf")
+    synthetic = np.full((224, 224, 3), 200, dtype=np.uint8)
+    pipeline.fit([synthetic] * 4, list(CLASS_NAMES))
+    temp_video = tempfile.NamedTemporaryFile(suffix=".avi", delete=False)
+    temp_video.close()
+    writer = cv2.VideoWriter(temp_video.name, cv2.VideoWriter_fourcc(*"MJPG"), 10.0, (64, 64))
+    for _ in range(20):
+        writer.write(np.full((64, 64, 3), 180, dtype=np.uint8))
+    writer.release()
+    try:
+        result = process_video(temp_video.name, pipeline, sample_fps=10.0, max_frames=3)
+        assert result.frames_analyzed == 3
+        assert result.truncated
+    finally:
+        Path(temp_video.name).unlink(missing_ok=True)
 
 
 def test_enhanced_pdf_and_dataframe_exports(synthetic_fruit_image):

@@ -23,7 +23,7 @@ from src.preprocessing import resize_rgb
 class HSVHistogramRandomForestPipeline(BaseBananaPipeline):
     key = "hsv_rf"
     display_name = "HSV Histogram + Random Forest"
-    feature_version = "hsv-hist-16x3-v1"
+    feature_version = "hsv-hist-16x3-grabcut-v2"
     image_size = (224, 224)
     member_name = "Chen Kai Jian"
     task_description = "HSV Colour Histogram + Random Forest Classifier"

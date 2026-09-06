@@ -14,8 +14,8 @@ A Streamlit application that compares four classical image-processing pipelines 
   - Single & batch image upload.
   - Optional single-image manual banana crop before assessment; the confirmed crop is passed through the existing segmentation and model pipelines.
   - 1-click representative benchmark sample presets.
-  - Video stream ingestion (`.mp4`, `.avi`) for conveyor belt monitoring with temporal progression chart.
-  - Live webcam / camera snapshot classification.
+  - Auditable video-file ingestion (`.mp4`, `.avi`, `.mov`, `.mkv`) with metadata validation, sampled-frame tracking, separate temporal charts, uncertainty handling, CSV export, and annotated-video export.
+  - Continuous browser-camera inspection through WebRTC plus calibrated single-snapshot assessment.
 - **Preprocessing & Filter Lab**:
   - Interactive noise reduction: Gaussian, Median, and Bilateral edge-preserving smoothing.
   - Contrast enhancement: Linear min-max contrast stretching and CLAHE (Adaptive Histogram Equalization).
