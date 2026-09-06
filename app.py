@@ -31,6 +31,7 @@ from src.cropping import (
     crop_box_from_display,
     crop_box_to_display,
     crop_from_component_box,
+    gallery_thumbnail,
     image_crop_key,
     reconcile_crop_states,
     resize_for_crop_editor,
@@ -329,7 +330,8 @@ def apply_reference_theme(dark_mode: bool = True) -> None:
 
 
 @st.cache_resource
-def load_models(model_dir: str):
+def load_models(model_dir: str, artifact_token: tuple[tuple[str, int, int], ...]):
+    """Load bundles; the artifact token invalidates Streamlit's cache after retraining."""
     return discover_bundles(model_dir)
 
 
@@ -341,7 +343,11 @@ def load_evaluation(path: str):
 
 def model_state():
     try:
-        return load_models(str(DEFAULT_ARTIFACT_DIR / "models"))
+        model_dir = DEFAULT_ARTIFACT_DIR / "models"
+        artifact_token = tuple(
+            sorted((path.name, path.stat().st_size, path.stat().st_mtime_ns) for path in model_dir.glob("*.joblib"))
+        )
+        return load_models(str(model_dir), artifact_token)
     except (OSError, IncompatibleModelError, ValueError) as exc:
         st.error(f"Models could not be loaded: {exc}")
         return {}
@@ -575,7 +581,7 @@ def render_uploaded_image_preview(images: dict[str, np.ndarray], image_metadata:
                 status_class = "cropped" if status == "Cropped" else ""
                 if filename == selected_filename:
                     status, status_class = "Selected", "selected"
-                st.image(image, width="stretch")
+                st.image(gallery_thumbnail(image), width="stretch")
                 st.markdown(f'<span class="preview-meta-value">{filename}</span><span class="gallery-status {status_class}">{status}</span>', unsafe_allow_html=True)
 
 

@@ -10,6 +10,7 @@ from src.cropping import (
     crop_box_to_display,
     crop_from_component_box,
     crop_image,
+    gallery_thumbnail,
     image_crop_key,
     reconcile_crop_states,
     resize_for_crop_editor,
@@ -68,6 +69,19 @@ def test_crop_editor_display_is_bounded_without_changing_original_image():
 
     assert display.shape == (315, 420, 3)
     assert original.shape == (1200, 1600, 3)
+
+
+def test_gallery_thumbnails_have_consistent_size_without_changing_source_images():
+    landscape = np.full((200, 400, 3), 80, dtype=np.uint8)
+    portrait = np.full((400, 200, 3), 160, dtype=np.uint8)
+    original_landscape, original_portrait = landscape.copy(), portrait.copy()
+
+    landscape_thumbnail = gallery_thumbnail(landscape)
+    portrait_thumbnail = gallery_thumbnail(portrait)
+
+    assert landscape_thumbnail.shape == portrait_thumbnail.shape == (150, 220, 3)
+    assert np.array_equal(landscape, original_landscape)
+    assert np.array_equal(portrait, original_portrait)
 
 
 def test_display_crop_coordinates_map_back_to_full_resolution_crop():

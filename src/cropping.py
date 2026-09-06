@@ -10,6 +10,7 @@ from PIL import Image
 
 MIN_CROP_DIMENSION = 32
 MAX_CROP_EDITOR_DIMENSION = 420
+GALLERY_THUMBNAIL_SIZE = (220, 150)
 
 
 class CropValidationError(ValueError):
@@ -84,6 +85,23 @@ def resize_for_crop_editor(image: np.ndarray, maximum_dimension: int = MAX_CROP_
     if display_size == (width, height):
         return image.copy()
     return np.asarray(Image.fromarray(image).resize(display_size, Image.Resampling.LANCZOS))
+
+
+def gallery_thumbnail(image: np.ndarray, size: tuple[int, int] = GALLERY_THUMBNAIL_SIZE) -> np.ndarray:
+    """Create a fixed-size, aspect-ratio-preserving display thumbnail for the upload gallery."""
+    if not isinstance(image, np.ndarray) or image.ndim != 3 or image.shape[2] != 3:
+        raise CropValidationError("Gallery thumbnails require an RGB image with three colour channels.")
+    width, height = size
+    if width < 1 or height < 1:
+        raise ValueError("Gallery thumbnail dimensions must be positive.")
+    source = Image.fromarray(image)
+    scale = min(width / source.width, height / source.height)
+    scaled_size = (max(1, round(source.width * scale)), max(1, round(source.height * scale)))
+    resized = source.resize(scaled_size, Image.Resampling.LANCZOS)
+    canvas = Image.new("RGB", size, color=(10, 25, 27))
+    offset = ((width - scaled_size[0]) // 2, (height - scaled_size[1]) // 2)
+    canvas.paste(resized, offset)
+    return np.asarray(canvas)
 
 
 def crop_box_to_display(box: CropBox, original_image: np.ndarray, display_image: np.ndarray) -> tuple[int, int, int, int]:
