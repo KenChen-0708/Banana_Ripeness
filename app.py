@@ -425,7 +425,7 @@ def assessment_summary(records, recommended_name: str) -> None:
     agreement = frame.groupby("filename")["predicted_class"].nunique().eq(1).mean()
     mean_blemish = frame["blemish_percent"].mean() if "blemish_percent" in frame.columns else 0.0
 
-    st.subheader("Completed all-pipeline consensus summary")
+    st.subheader("Completed All-Pipeline Consensus Summary")
     cols = st.columns(5)
     cols[0].metric("Images assessed", frame["filename"].nunique())
     cols[1].metric("Pipeline runs", len(frame))
@@ -687,18 +687,27 @@ def render_pipeline_tab(pipeline_name: str, pipeline_records, images: dict[str, 
 
 def assessment_page(models, recommended_key: str) -> None:
     landing_hero()
-    uploads = st.file_uploader(
-        "Upload banana images",
-        type=["jpg", "jpeg", "png"],
-        accept_multiple_files=True,
-        help="Selects one or more banana photographs for comparison across every trained pipeline. Recommended: one banana per image, sharp focus, diffuse lighting, plain contrasting background, minimal shadow, and at least 224 × 224 pixels.",
-        key="assessment_uploads",
-    )
-    preset_choice = st.selectbox(
-        "Quick-load benchmark preset samples",
-        ["-- Choose a preset or upload your own files --"] + list(SAMPLE_PRESETS.keys()),
-        help="Loads a representative project image without uploading a file. Recommended: use presets for demonstrations, but use your own well-lit banana photograph for a real assessment.",
-    )
+    upload_tab, camera_tab = st.tabs(["📁 Upload Images", "📷 Take Photo"])
+    with upload_tab:
+        uploads = st.file_uploader(
+            "Upload banana images",
+            type=["jpg", "jpeg", "png"],
+            accept_multiple_files=True,
+            help="Selects one or more banana photographs for comparison across every trained pipeline. Recommended: one banana per image, sharp focus, diffuse lighting, plain contrasting background, minimal shadow, and at least 224 × 224 pixels.",
+            key="assessment_uploads",
+        )
+        preset_choice = st.selectbox(
+            "Quick-load benchmark preset samples",
+            ["-- Choose a preset or upload your own files --"] + list(SAMPLE_PRESETS.keys()),
+            help="Loads a representative project image without uploading a file. Recommended: use presets for demonstrations, but use your own well-lit banana photograph for a real assessment.",
+        )
+    with camera_tab:
+        camera_capture = st.camera_input(
+            "Take a photo of a banana",
+            key="assessment_camera_capture",
+            help="Capture one clear banana photo. The captured image uses the same preview, crop, four-algorithm comparison, grading, forecast, and export workflow as an uploaded image.",
+        )
+        st.caption("Use a plain contrasting background, diffuse lighting, and keep the whole banana in focus.")
 
     images, image_metadata, errors = {}, {}, []
     if preset_choice and preset_choice in SAMPLE_PRESETS:
@@ -718,6 +727,19 @@ def assessment_page(models, recommended_key: str) -> None:
             except ImageValidationError as exc:
                 errors.append(f"{upload.name}: {exc}")
 
+    if camera_capture is not None:
+        camera_bytes = camera_capture.getvalue()
+        camera_filename = "Camera Capture.jpg"
+        try:
+            images[camera_filename] = decode_image(camera_bytes)
+            image_metadata[camera_filename] = len(camera_bytes)
+            camera_digest = hashlib.sha256(camera_bytes).hexdigest()
+            if st.session_state.get("assessment_camera_digest") != camera_digest:
+                st.session_state.assessment_camera_digest = camera_digest
+                st.session_state.assessment_selected_image = camera_filename
+        except ImageValidationError as exc:
+            errors.append(f"{camera_filename}: {exc}")
+
     if errors:
         st.warning("Some files were skipped:\n\n" + "\n\n".join(errors))
 
@@ -734,7 +756,7 @@ def assessment_page(models, recommended_key: str) -> None:
     st.session_state.assessment_crop_states = crop_states
     analysis_images = analysis_images_for_assessment(images, crop_states)
 
-    with st.expander("Optional benchmark, calibration, and forecast settings"):
+    with st.expander("Optional Benchmark, Calibration, and Forecast Settings"):
         px_cm = st.slider(
             "Spatial calibration (pixels / cm)",
             min_value=1.0,
@@ -744,7 +766,7 @@ def assessment_page(models, recommended_key: str) -> None:
             help="Converts pixel measurements to centimetres. Measure a known reference object in the same image plane and enter pixels ÷ reference length in cm. Recommended: calibrate each camera setup; use 10 px/cm only as a demonstration default.",
         )
         st.caption("Commercial quality rules: Grade A (<5% spots), Grade B (5-15%), Grade C (15-30%), Reject (>30% or Rotten).")
-        st.markdown("##### Ripeness forecast storage conditions")
+        st.markdown("##### Ripeness Forecast Storage Conditions")
         storage_l, storage_r = st.columns(2)
         with storage_l:
             storage_temperature_c = st.slider(
@@ -844,17 +866,15 @@ def assessment_page(models, recommended_key: str) -> None:
 
 def video_analysis_page(models, recommended_key: str) -> None:
     hero(
-        "Video and camera inspection",
-        "Auditable sampled-video analysis, continuous browser-camera inspection, and calibrated snapshots.",
-        "Extra efforts: video processing",
+        "Video and Camera Inspection",
+        "Auditable sampled-video analysis and continuous browser-camera inspection.",
+        "Extra Efforts: Video Processing",
     )
     pipeline, _ = models[recommended_key]
-    st.markdown(f"**Active grading pipeline:** `{pipeline.display_name}`")
+    st.markdown(f"**Active Grading Pipeline:** `{pipeline.display_name}`")
     st.caption("Pipeline: decode → sample → segment → classify → detect blemishes → calibrate → grade → track.")
 
-    video_tab, live_tab, snapshot_tab = st.tabs(
-        ["🎥 Uploaded video analysis", "📹 Continuous camera", "📸 Camera snapshot"]
-    )
+    video_tab, live_tab = st.tabs(["🎥 Uploaded Video", "📹 Live Camera"])
 
     with video_tab:
         video_file = st.file_uploader(
@@ -877,7 +897,7 @@ def video_analysis_page(models, recommended_key: str) -> None:
                 st.error(str(exc))
                 metadata = None
 
-            with st.expander("Analysis and calibration settings", expanded=True):
+            with st.expander("Analysis and Calibration Settings", expanded=True):
                 c1, c2, c3, c4 = st.columns(4)
                 sample_fps = c1.slider(
                     "Requested sample FPS", 0.5, 10.0, 2.0, 0.5,
@@ -939,7 +959,7 @@ def video_analysis_page(models, recommended_key: str) -> None:
                 k5.metric("Model latency", f"{res.mean_processing_time_ms:.1f} ms")
                 k6.metric("Analysis throughput", f"{res.analysis_fps:.2f} FPS")
 
-                st.subheader("Temporal measurements")
+                st.subheader("Temporal Measurements")
                 time_df = res.timeline_df.set_index("timestamp_sec")
                 chart_left, chart_right = st.columns(2)
                 chart_left.caption("Confidence (%)")
@@ -952,7 +972,7 @@ def video_analysis_page(models, recommended_key: str) -> None:
                 d2.caption("Quality-grade distribution")
                 d2.bar_chart(pd.Series(res.grade_counts, name="frames"))
 
-                st.subheader("Tracked-frame inspector")
+                st.subheader("Tracked-Frame Inspector")
                 if res.sampled_frames:
                     options = [
                         f"Source frame {int(res.timeline_df.iloc[i]['source_frame_index'])} · {t:.2f}s"
@@ -973,7 +993,7 @@ def video_analysis_page(models, recommended_key: str) -> None:
                         right.markdown(f"**Result:** `{label}`  \n**Grade:** `{geometry['quality_grade']}`  \n**Confidence:** `{record.confidence:.1%}`")
                         right.markdown(f"**Blemish:** `{geometry['blemish_ratio']:.1%}`  \n**Dimensions:** `{geometry['physical_length_cm']:.1f} × {geometry['physical_width_cm']:.1f} cm`")
 
-                st.subheader("Complete sampled-frame ledger")
+                st.subheader("Complete Sampled-Frame Ledger")
                 st.dataframe(res.timeline_df, hide_index=True, width="stretch")
                 e1, e2 = st.columns(2)
                 e1.download_button("Download CSV ledger", res.timeline_df.to_csv(index=False).encode("utf-8"), "video_timeline_analysis.csv", "text/csv", width="stretch")
@@ -984,14 +1004,14 @@ def video_analysis_page(models, recommended_key: str) -> None:
         st.caption("Continuous browser-camera frames are processed and annotated while the stream is playing. Use STOP to end capture.")
         algorithm_options = {model.display_name: key for key, (model, _) in models.items()}
         selection = st.selectbox(
-            "Continuous camera algorithm",
-            ["All 4 algorithms"] + list(algorithm_options),
+            "Live Camera Algorithm",
+            ["All 4 Algorithms"] + list(algorithm_options),
             key="live_algorithm_selection",
-            help="Choose one algorithm for the live overlay or All 4 algorithms to compare every loaded model on sampled live frames.",
+            help="Choose one algorithm for the live overlay or All 4 Algorithms to compare every loaded model on sampled live frames.",
         )
-        selected_keys = list(models) if selection == "All 4 algorithms" else [algorithm_options[selection]]
+        selected_keys = list(models) if selection == "All 4 Algorithms" else [algorithm_options[selection]]
         selected_models = {key: models[key] for key in selected_keys}
-        overlay_pipeline = models[recommended_key][0] if selection == "All 4 algorithms" else selected_models[selected_keys[0]][0]
+        overlay_pipeline = models[recommended_key][0] if selection == "All 4 Algorithms" else selected_models[selected_keys[0]][0]
         l1, l2, l3 = st.columns(3)
         live_px_cm = l1.slider(
             "Live-camera pixels per cm", 1.0, 80.0, DEFAULT_PIXELS_PER_CM, 0.5, key="live_scale",
@@ -1005,7 +1025,7 @@ def video_analysis_page(models, recommended_key: str) -> None:
             "Comparison interval (seconds)", 0.5, 5.0, 1.0, 0.5, key="live_interval",
             help="How often selected algorithms run on live frames. All-four comparison is sampled to keep the camera stream responsive.",
         )
-        if selection == "All 4 algorithms":
+        if selection == "All 4 Algorithms":
             st.info(f"All {len(selected_models)} loaded algorithms are compared every {live_interval:.1f} seconds. The annotated overlay uses {overlay_pipeline.display_name}.")
         else:
             st.caption(f"Live overlay and sampled assessment: {overlay_pipeline.display_name}.")
@@ -1048,44 +1068,11 @@ def video_analysis_page(models, recommended_key: str) -> None:
                 async_processing=True,
             )
         else:
-            st.warning("Continuous camera support is unavailable in this environment. Install project requirements and use snapshot mode meanwhile.")
-    with snapshot_tab:
-        st.caption("Capture and assess one camera image. This is a snapshot, not a continuous stream.")
-        s1, s2 = st.columns(2)
-        snapshot_px_cm = s1.slider(
-            "Snapshot pixels per cm", 1.0, 80.0, DEFAULT_PIXELS_PER_CM, 0.5, key="snapshot_scale",
-            help="Converts snapshot pixels into centimetres. Photograph a ruler or known-size marker in the same plane and enter pixels ÷ centimetres. Recommended: measure per camera setup; 10 px/cm is only illustrative.",
-        )
-        snapshot_threshold = s2.slider(
-            "Snapshot uncertain threshold", 0.0, 1.0, 0.55, 0.05, key="snapshot_threshold",
-            help="Controls when a snapshot result is reported as Uncertain. Recommended: 0.55 for normal use or 0.65 for stricter quality-control decisions.",
-        )
-        st.caption("Set pixels/cm from a ruler or known-size object photographed beside the banana.")
-        cam_image = st.camera_input(
-            "Take a photo of a banana",
-            help="Captures one still image for segmentation and classification. Recommended: show one banana, fill roughly 30–70% of the frame, use diffuse lighting, keep the image sharp, and use a plain contrasting background.",
-        )
-        if cam_image is not None:
-            try:
-                cam_arr = decode_image(cam_image.getvalue())
-                annotated, record, geometry, label = analyse_frame(cam_arr, pipeline, snapshot_px_cm, snapshot_threshold, "camera_snapshot.jpg")
-                if not geometry["detection_valid"]:
-                    st.warning("No credible banana contour was detected. Retake the image against a contrasting background.")
-                st.markdown(
-                    f'<div class="result-card"><b>Camera snapshot assessment</b><br>Result: <b>{label.title()}</b> | '
-                    f'Grade: <b>{geometry["quality_grade"]}</b> · Confidence: {record.confidence:.1%} · '
-                    f'Processing: {record.processing_time_ms:.1f} ms</div>', unsafe_allow_html=True,
-                )
-                c1, c2, c3 = st.columns(3)
-                c1.image(annotated, caption="Contour, bounding box and calibrated dimensions", width="stretch")
-                c2.image(record.explanation["fruit_mask"], caption="Segmented fruit mask", clamp=True, width="stretch")
-                c3.image(mask_overlay(cam_arr, record.explanation["brown_mask"]), caption="Blemish overlay", width="stretch")
-            except (ImageValidationError, ValueError, cv2.error) as exc:
-                st.error(f"Snapshot analysis failed: {exc}")
+            st.warning("Continuous camera support is unavailable in this environment. Use Assessment → Take Photo for a still-camera assessment.")
 
 
 def filter_lab_page(models) -> None:
-    hero("Preprocessing & filter lab", "Interactive experimentation with classical filters, histogram equalization, morphology, and colour slicing.", "Core image processing")
+    hero("Preprocessing & Filter Lab", "Interactive experimentation with classical filters, histogram equalization, morphology, and colour slicing.", "Core Image Processing")
     preset_name = st.selectbox(
         "Select sample for filter experimentation", list(SAMPLE_PRESETS.keys()),
         help="Chooses the reference image used throughout the preprocessing laboratory. Recommended: test more than one ripeness class and background before adopting parameter values.",
@@ -1221,7 +1208,7 @@ def confusion_figure(matrix, title: str):
 
 
 def evaluation_page(summary, models) -> None:
-    hero("Model evaluation & leaderboard", "Compare held-out performance, macro-F1, and inspect class-level error matrices.", "Mode A: comparative study")
+    hero("Model Evaluation & Leaderboard", "Compare held-out performance, macro-F1, and inspect class-level error matrices.", "Mode A: Comparative Study")
     if not summary:
         st.warning("Run `scripts/train_compare.py` to generate evaluation results.")
         return
@@ -1248,12 +1235,12 @@ def evaluation_page(summary, models) -> None:
     metrics[2].metric("Best macro-F1", f"{best['Macro-F1']:.2%}")
     metrics[3].metric("Held-out test images", totals.get("test", "N/A"))
 
-    st.subheader("Benchmark leaderboard")
+    st.subheader("Benchmark Leaderboard")
     percent_cols = ["Validation accuracy", "Test accuracy", "Macro-F1", "Weighted-F1", "Generalisation gap"]
     st.dataframe(frame.style.format({x: "{:.2%}" for x in percent_cols}), hide_index=True, width="stretch")
     st.bar_chart(frame.set_index("Algorithm")[["Test accuracy", "Macro-F1", "Weighted-F1"]], color=["#3BA272", "#F4B942", "#5470C6"])
 
-    st.subheader("Dataset balance and experimental protocol")
+    st.subheader("Dataset Balance and Experimental Protocol")
     split_frame = pd.DataFrame(summary.get("split_counts", {})).reindex(CLASS_NAMES).fillna(0).astype(int)
     split_frame.index = [x.title() for x in split_frame.index]
     left, right = st.columns([1.35, 1])
@@ -1264,7 +1251,7 @@ def evaluation_page(summary, models) -> None:
         f"**Protocol:** fixed train, validation and held-out test splits; macro-F1 limits dominance by larger classes."
     )
 
-    st.subheader("Pipeline diagnostic explorer")
+    st.subheader("Pipeline Diagnostic Explorer")
     selected = st.selectbox(
         "Pipeline", [item["algorithm"] for item in summary["results"]],
         help="Chooses the trained algorithm whose confusion matrix and class metrics are displayed. Recommended: inspect the top-ranked HSV Histogram + Random Forest first, then compare weaker classes across all models.",
@@ -1280,13 +1267,13 @@ def evaluation_page(summary, models) -> None:
         st.bar_chart(report[["precision", "recall", "f1-score"]], color=["#5470C6", "#F4B942", "#3BA272"])
 
     if item["pipeline_key"] in models:
-        with st.expander("Reproducibility manifest and estimator parameters"):
+        with st.expander("Reproducibility Manifest and Estimator Parameters"):
             manifest = models[item["pipeline_key"]][1]
             st.json({key: manifest.get(key) for key in ["pipeline_key", "feature_version", "image_size", "class_order", "trained_at_utc", "parameters"]})
 
 
 def training_page(models) -> None:
-    hero("Model training & reproducibility", "Configure training runs, feature caching, and reproduce held-out benchmarks.", "Pipeline training")
+    hero("Model Training & Reproducibility", "Configure training runs, feature caching, and reproduce held-out benchmarks.", "Pipeline Training")
     options = {PIPELINE_CLASSES[key]().display_name: key for key in PIPELINE_CLASSES}
     with st.form("training_configuration"):
         selected = st.multiselect(
@@ -1331,7 +1318,7 @@ def training_page(models) -> None:
         "evaluation_protocol": "Train / validation / held-out test",
         "ranking_metric": "Test macro-F1, then accuracy",
     }
-    st.subheader("Experiment preview")
+    st.subheader("Experiment Preview")
     cols = st.columns(4)
     for column, (label, value) in zip(cols, [("Pipelines", len(selected)), ("Classes", len(CLASS_NAMES)), ("Image size", "224 × 224"), ("Selection metric", "Macro-F1")], strict=True):
         column.metric(label, value)
