@@ -2,6 +2,8 @@ from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
 
+from app import parse_training_progress
+
 
 def test_dashboard_starts_without_exceptions():
     app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run(timeout=60)
@@ -78,6 +80,12 @@ def test_model_loader_cache_is_invalidated_when_artifacts_are_retrained():
     assert "def load_models(model_dir: str, artifact_token" in source
     assert "path.stat().st_mtime_ns" in source
     assert "load_models(str(model_dir), artifact_token)" in source
+
+
+def test_training_progress_records_are_parsed_and_clamped():
+    assert parse_training_progress('__TRAINING_PROGRESS__ {"progress": 0.42, "message": "Fitting"}') == (0.42, "Fitting")
+    assert parse_training_progress('__TRAINING_PROGRESS__ {"progress": 2, "message": "Done"}') == (1.0, "Done")
+    assert parse_training_progress("ordinary training output") is None
 
 
 def test_continuous_camera_supports_all_or_one_selected_algorithm():

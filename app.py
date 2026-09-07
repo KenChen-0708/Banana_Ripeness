@@ -85,6 +85,19 @@ st.set_page_config(
 )
 PIPELINE_ACCENTS = ["#F4B942", "#3BA272", "#5470C6", "#9A60B4"]
 ASSET_DIR = Path(__file__).parent / "assets"
+TRAINING_PROGRESS_PREFIX = "__TRAINING_PROGRESS__ "
+
+
+def parse_training_progress(line: str) -> tuple[float, str] | None:
+    """Parse progress records produced by scripts/train_compare.py."""
+    if not line.startswith(TRAINING_PROGRESS_PREFIX):
+        return None
+    try:
+        payload = json.loads(line.removeprefix(TRAINING_PROGRESS_PREFIX))
+        progress = min(max(float(payload["progress"]), 0.0), 1.0)
+        return progress, str(payload["message"])
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return None
 
 
 @st.cache_data
@@ -1333,15 +1346,41 @@ def training_page(models) -> None:
         if not Path(dataset).exists():
             st.error(f"Dataset directory does not exist: {dataset}")
         else:
+            progress_bar = st.progress(0.0, text="Starting model training...")
             with st.status("Training and evaluating selected pipelines...", expanded=True) as status:
-                result = subprocess.run(command, cwd=Path(__file__).parent, capture_output=True, text=True)
-                st.code((result.stdout + "\n" + result.stderr)[-12000:])
-                if result.returncode == 0:
+                output = st.empty()
+                output_lines: list[str] = []
+                last_progress = 0.0
+                process = subprocess.Popen(
+                    command,
+                    cwd=Path(__file__).parent,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                    encoding="utf-8",
+                    errors="replace",
+                )
+                if process.stdout is None:
+                    raise RuntimeError("Training process output could not be read.")
+                for line in process.stdout:
+                    progress_update = parse_training_progress(line.strip())
+                    if progress_update is not None:
+                        fraction, message = progress_update
+                        last_progress = fraction
+                        progress_bar.progress(fraction, text=message)
+                    else:
+                        output_lines.append(line)
+                        output.code("".join(output_lines)[-12000:])
+                returncode = process.wait()
+                if returncode == 0:
+                    progress_bar.progress(1.0, text="Training complete")
                     status.update(label="Training complete", state="complete")
                     load_models.clear()
                     load_evaluation.clear()
                     st.success("Models and evaluation artefacts were updated. Refresh to load the new bundles.")
                 else:
+                    progress_bar.progress(last_progress, text="Training failed — see output for details")
                     status.update(label="Training failed", state="error")
 
 
