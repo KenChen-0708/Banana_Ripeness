@@ -5,6 +5,7 @@ import json
 import sys
 from pathlib import Path
 from time import perf_counter
+from typing import Callable
 
 import numpy as np
 import pandas as pd
@@ -19,6 +20,15 @@ from src.evaluation import evaluate_predictions, rank_results
 from src.model_store import build_manifest, save_bundle
 from src.pipelines import PIPELINE_CLASSES, BaseBananaPipeline, create_pipeline
 from src.preprocessing import decode_image
+
+
+PROGRESS_PREFIX = "__TRAINING_PROGRESS__ "
+
+
+def emit_progress(progress: float, message: str) -> None:
+    """Emit a machine-readable update while keeping normal CLI output readable."""
+    payload = {"progress": min(max(progress, 0.0), 1.0), "message": message}
+    print(PROGRESS_PREFIX + json.dumps(payload), flush=True)
 
 
 def parse_args() -> argparse.Namespace:
@@ -36,6 +46,7 @@ def extract_features(
     items: list[DatasetItem],
     cache_path: Path,
     use_cache: bool,
+    progress_callback: Callable[[int, int], None] | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     if use_cache and cache_path.exists():
         cached = np.load(cache_path, allow_pickle=False)
@@ -43,14 +54,19 @@ def extract_features(
             cached["feature_version"].item() == pipeline.feature_version
             and list(cached["paths"]) == [str(item.path) for item in items]
         ):
+            if progress_callback:
+                progress_callback(len(items), len(items))
             return cached["features"], cached["labels"]
 
     features: list[np.ndarray] = []
     labels: list[str] = []
     total = len(items)
+    update_interval = max(1, total // 100)
     for index, item in enumerate(items, start=1):
         features.append(pipeline.extract_features(decode_image(item.path)))
         labels.append(item.label)
+        if progress_callback and (index % update_interval == 0 or index == total):
+            progress_callback(index, total)
         if index % 500 == 0 or index == total:
             print(f"  {item.split}: extracted {index}/{total}", flush=True)
     matrix = np.vstack(features)
@@ -82,22 +98,44 @@ def train_pipeline(
     splits: dict[str, list[DatasetItem]],
     artifact_dir: Path,
     use_cache: bool,
+    pipeline_index: int,
+    pipeline_count: int,
 ) -> dict:
     pipeline = create_pipeline(key)
     print(f"\nTraining {pipeline.display_name}")
     started = perf_counter()
+
+    def update(local_progress: float, message: str) -> None:
+        overall_progress = (pipeline_index + local_progress) / pipeline_count
+        emit_progress(overall_progress, f"{pipeline.display_name}: {message}")
+
+    update(0.0, "preparing features")
     matrices: dict[str, np.ndarray] = {}
     labels: dict[str, np.ndarray] = {}
-    for split, items in splits.items():
+    for split_index, (split, items) in enumerate(splits.items()):
         cache = artifact_dir / "cache" / f"{key}_{pipeline.feature_version}_{split}.npz"
-        matrices[split], labels[split] = extract_features(pipeline, items, cache, use_cache)
+        matrices[split], labels[split] = extract_features(
+            pipeline,
+            items,
+            cache,
+            use_cache,
+            progress_callback=lambda done, total, split=split, split_index=split_index: update(
+                (split_index + (done / max(total, 1))) * 0.2,
+                f"extracting {split} features ({done}/{total})",
+            ),
+        )
 
+    update(0.6, "fitting classifier")
     pipeline.fit_features(matrices["train"], labels["train"])
+    update(0.8, "evaluating validation split")
     validation_metrics = evaluate_predictions(labels["valid"], predict_features(pipeline, matrices["valid"]))
+    update(0.87, "evaluating held-out test split")
     test_metrics = evaluate_predictions(labels["test"], predict_features(pipeline, matrices["test"]))
+    update(0.94, "saving model and metrics")
     manifest = build_manifest(pipeline, validation_metrics, test_metrics)
     save_bundle(pipeline, manifest, artifact_dir / "models" / f"{key}.joblib")
     save_confusion_csv(test_metrics, artifact_dir / "metrics" / f"{key}_confusion.csv")
+    update(1.0, "complete")
 
     elapsed = perf_counter() - started
     print(
@@ -123,7 +161,10 @@ def main() -> None:
     for split, items in splits.items():
         print(f"  {split}: {len(items)} {class_counts(items)}")
 
-    results = [train_pipeline(key, splits, args.artifacts, not args.no_cache) for key in args.pipelines]
+    results = [
+        train_pipeline(key, splits, args.artifacts, not args.no_cache, index, len(args.pipelines))
+        for index, key in enumerate(args.pipelines)
+    ]
     ranked = rank_results(results)
     summary = {
         "dataset": str(args.dataset.resolve()),
