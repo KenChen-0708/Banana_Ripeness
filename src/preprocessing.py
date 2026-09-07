@@ -355,6 +355,7 @@ def calibrate_fruit_geometry(
     blem_area_cm2 = phys_area_cm2 * blem_ratio
 
     return {
+        "analysis_size": size,
         "pixels_per_cm": px_cm,
         "pixel_area": pixel_area,
         "physical_area_cm2": phys_area_cm2,

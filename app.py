@@ -60,7 +60,14 @@ from src.preprocessing import (
     mask_overlay,
     resize_rgb,
 )
-from src.video import VideoValidationError, analyse_frame, probe_video, process_video
+from src.video import (
+    VideoValidationError,
+    analyse_frame,
+    draw_live_overlay,
+    live_preview_size,
+    probe_video,
+    process_video,
+)
 
 try:
     import av
@@ -1011,15 +1018,23 @@ def video_analysis_page(models, recommended_key: str) -> None:
                     rgb = frame.to_ndarray(format="rgb24")
                     try:
                         self.assessor.submit(rgb, "live_camera")
-                        annotated, _, _, _ = analyse_frame(rgb, overlay_pipeline, live_px_cm, live_threshold, "live_camera")
+                        preview_size = live_preview_size(rgb)
+                        annotated, current_record, geometry, _ = analyse_frame(
+                            rgb,
+                            overlay_pipeline,
+                            live_px_cm,
+                            live_threshold,
+                            "live_camera",
+                            output_size=preview_size,
+                            show_status=False,
+                        )
                         snapshot = self.assessor.snapshot()
-                        y = 48
-                        for record in snapshot.records:
+                        records = snapshot.records or [current_record]
+                        lines = [f"QUALITY: {geometry['quality_grade']}"]
+                        for record in records:
                             label = "UNCERTAIN" if record.confidence < live_threshold else record.predicted_class.upper()
-                            text = f"{record.algorithm}: {label} {record.confidence:.0%}"
-                            cv2.putText(annotated, text, (8, y), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (255, 255, 255), 3, cv2.LINE_AA)
-                            cv2.putText(annotated, text, (8, y), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (24, 74, 53), 1, cv2.LINE_AA)
-                            y += 18
+                            lines.append(f"{record.algorithm}: {label} {record.confidence:.0%}")
+                        annotated = draw_live_overlay(annotated, lines)
                         return av.VideoFrame.from_ndarray(annotated, format="rgb24")
                     except Exception:
                         return frame
