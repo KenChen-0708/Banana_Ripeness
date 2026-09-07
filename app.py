@@ -72,7 +72,7 @@ except ImportError:
 
 st.set_page_config(
     page_title="Banana Ripeness Assessment",
-    page_icon="ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€šÃ‚ÂÃƒâ€¦Ã¢â‚¬â„¢",
+    page_icon="🍌",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -358,9 +358,9 @@ def model_state():
 def section_guide(title: str, rubric_context: str, how_to_use: str) -> None:
     st.markdown(
         f"""<div class="guide-box">
-            <h4>ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒâ€¹Ã…â€œ {title}</h4>
-            <div class="section-desc"><b>ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€¦Ã‚Â½Ãƒâ€šÃ‚Â¯ Academic Purpose:</b> {rubric_context}</div>
-            <div class="section-desc"><b>ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢Ãƒâ€šÃ‚Â¡ How to Test:</b> {how_to_use}</div>
+            <h4>📘 {title}</h4>
+            <div class="section-desc"><b>🎯 Academic Purpose:</b> {rubric_context}</div>
+            <div class="section-desc"><b>💡 How to Test:</b> {how_to_use}</div>
         </div>""",
         unsafe_allow_html=True,
     )
@@ -437,10 +437,10 @@ def render_ripeness_forecast(record, temperature_c: float, near_ethylene_fruit: 
         temperature_c=temperature_c,
         near_ethylene_fruit=near_ethylene_fruit,
     )
-    st.markdown("### ÃƒÆ’Ã‚Â¢Ãƒâ€šÃ‚ÂÃƒâ€šÃ‚Â³ Ripeness Progress Forecast")
+    st.markdown("### ⏳ Ripeness Progress Forecast")
     left, middle, right = st.columns(3)
     left.metric("Current stage", record.predicted_class.title())
-    middle.metric("Estimated window", f"{forecast.days_min}ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ{forecast.days_max} days")
+    middle.metric("Estimated window", f"{forecast.days_min}–{forecast.days_max} days")
     right.metric("Detected blemishes", f"{blemish_ratio:.1%}")
     st.info(f"**{forecast.headline}.** {forecast.recommendation}")
     st.caption(f"Storage adjustment: {forecast.storage_effect}")
@@ -532,15 +532,15 @@ def render_manual_crop_control(images: dict[str, np.ndarray], crop_states: dict[
             st.markdown("**Cropped Preview**")
             if pending_crop is not None:
                 st.image(pending_crop, width=400)
-                st.caption(f"Preview: {pending_crop.shape[1]} ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â {pending_crop.shape[0]} px")
+                st.caption(f"Preview: {pending_crop.shape[1]} × {pending_crop.shape[0]} px")
                 st.caption("Actual analysis uses the full-resolution crop.")
         with action_col:
             st.markdown("&nbsp;", unsafe_allow_html=True)
-            if st.button("ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ  Confirm Crop", type="primary", disabled=pending_crop is None, key=f"confirm_assessment_crop_{source_key}", width="stretch"):
+            if st.button("✓  Confirm Crop", type="primary", disabled=pending_crop is None, key=f"confirm_assessment_crop_{source_key}", width="stretch"):
                 crop_states = confirm_crop_state(crop_states, selected_filename, original_image, pending_box)
                 st.session_state.assessment_crop_states = crop_states
                 st.rerun()
-            if st.button("ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Ãƒâ€šÃ‚Â»  Reset Crop", key=f"reset_assessment_crop_{source_key}", width="stretch"):
+            if st.button("↻  Reset Crop", key=f"reset_assessment_crop_{source_key}", width="stretch"):
                 crop_states = reset_crop_state(crop_states, selected_filename, original_image)
                 st.session_state.assessment_crop_states = crop_states
                 st.rerun()
@@ -565,7 +565,7 @@ def render_uploaded_image_preview(images: dict[str, np.ndarray], image_metadata:
                 st.markdown(
                     f'''<div class="preview-meta">
                     <div class="preview-meta-row"><span class="material-symbols-rounded">description</span><span class="preview-meta-label">Filename</span><span class="preview-meta-value">{filename}</span></div>
-                    <div class="preview-meta-row"><span class="material-symbols-rounded">photo_size_select_large</span><span class="preview-meta-label">Dimensions</span><span class="preview-meta-value">{width} ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â {height} px</span></div>
+                    <div class="preview-meta-row"><span class="material-symbols-rounded">photo_size_select_large</span><span class="preview-meta-label">Dimensions</span><span class="preview-meta-value">{width} × {height} px</span></div>
                     <div class="preview-meta-row"><span class="material-symbols-rounded">data_object</span><span class="preview-meta-label">File size</span><span class="preview-meta-value">{_format_file_size(image_metadata.get(filename))}</span></div>
                     </div>''',
                     unsafe_allow_html=True,
@@ -606,7 +606,7 @@ def render_pipeline_tab(pipeline_name: str, pipeline_records, images: dict[str, 
     grade = explanation.get("quality_grade", "Grade A (Premium)")
 
     # 1. Three neatly aligned images across 3 equal columns
-    st.markdown("##### ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€šÃ‚Â¬ Computer Vision Diagnostic Stages")
+    st.markdown("##### 🔬 Computer Vision Diagnostic Stages")
     img_c1, img_c2, img_c3 = st.columns(3)
     with img_c1:
         st.image(annotated, caption="1. Spatial Calibration (MinAreaRect)", width="stretch")
@@ -618,7 +618,7 @@ def render_pipeline_tab(pipeline_name: str, pipeline_records, images: dict[str, 
     # 2. Balanced Metrics and Probability Chart
     stat_c1, stat_c2 = st.columns([1.3, 1])
     with stat_c1:
-        st.markdown("##### ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒâ€šÃ‚Â Physical Dimensions & Quality Metrics")
+        st.markdown("##### 📐 Physical Dimensions & Quality Metrics")
         m_row1 = st.columns(2)
         m_row1[0].metric("Ripeness Stage", record.predicted_class.title(), f"{record.confidence:.1%} confidence")
         m_row1[1].metric("Commercial Export Grade", grade, f"{geometry.get('blemish_ratio', 0.0):.1%} blemish")
@@ -626,17 +626,17 @@ def render_pipeline_tab(pipeline_name: str, pipeline_records, images: dict[str, 
         m_row2 = st.columns(3)
         m_row2[0].metric("Length", f"{geometry.get('physical_length_cm', 0.0):.1f} cm")
         m_row2[1].metric("Max Width", f"{geometry.get('physical_width_cm', 0.0):.1f} cm")
-        m_row2[2].metric("Surface Area", f"{geometry.get('physical_area_cm2', 0.0):.1f} cmÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â²")
+        m_row2[2].metric("Surface Area", f"{geometry.get('physical_area_cm2', 0.0):.1f} cm²")
 
     with stat_c2:
-        st.markdown("##### ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒâ€¦Ã‚Â  Class Probability Profile")
+        st.markdown("##### 📊 Class Probability Profile")
         probabilities = pd.DataFrame(
             {"Class": [x.title() for x in CLASS_NAMES], "Probability": [record.probabilities.get(x, 0) for x in CLASS_NAMES]}
         ).set_index("Class")
         st.bar_chart(probabilities, color=accent, height=170)
 
     # 3. Data Ledger Expander
-    with st.expander("ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¹ View Data Table Ledger & Export Reports", expanded=False):
+    with st.expander("📋 View Data Table Ledger & Export Reports", expanded=False):
         display_cols = ["filename", "predicted_class", "quality_grade", "confidence", "blemish_percent", "length_cm", "width_cm", "processing_time_ms"]
         display = frame[[c for c in display_cols if c in frame.columns]]
         st.dataframe(
@@ -671,7 +671,7 @@ def assessment_page(models, recommended_key: str) -> None:
         "Upload banana images",
         type=["jpg", "jpeg", "png"],
         accept_multiple_files=True,
-        help="Selects one or more banana photographs for comparison across every trained pipeline. Recommended: one banana per image, sharp focus, diffuse lighting, plain contrasting background, minimal shadow, and at least 224 ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â 224 pixels.",
+        help="Selects one or more banana photographs for comparison across every trained pipeline. Recommended: one banana per image, sharp focus, diffuse lighting, plain contrasting background, minimal shadow, and at least 224 × 224 pixels.",
         key="assessment_uploads",
     )
     preset_choice = st.selectbox(
@@ -721,15 +721,15 @@ def assessment_page(models, recommended_key: str) -> None:
             max_value=40.0,
             value=DEFAULT_PIXELS_PER_CM,
             step=0.5,
-            help="Converts pixel measurements to centimetres. Measure a known reference object in the same image plane and enter pixels ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â· reference length in cm. Recommended: calibrate each camera setup; use 10 px/cm only as a demonstration default.",
+            help="Converts pixel measurements to centimetres. Measure a known reference object in the same image plane and enter pixels ÷ reference length in cm. Recommended: calibrate each camera setup; use 10 px/cm only as a demonstration default.",
         )
         st.caption("Commercial quality rules: Grade A (<5% spots), Grade B (5-15%), Grade C (15-30%), Reject (>30% or Rotten).")
         st.markdown("##### Ripeness forecast storage conditions")
         storage_l, storage_r = st.columns(2)
         with storage_l:
             storage_temperature_c = st.slider(
-                "Storage temperature (ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â°C)", min_value=0.0, max_value=40.0, value=22.0, step=1.0,
-                help="Controls the forecasted ripening rate because cool storage slows progression and warmth accelerates it. Recommended: enter the measured storage temperature; 13ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ15ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â°C is suitable for slowing ripening, while 22ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â°C represents typical room storage.",
+                "Storage temperature (°C)", min_value=0.0, max_value=40.0, value=22.0, step=1.0,
+                help="Controls the forecasted ripening rate because cool storage slows progression and warmth accelerates it. Recommended: enter the measured storage temperature; 13–15°C is suitable for slowing ripening, while 22°C represents typical room storage.",
             )
         with storage_r:
             near_ethylene_fruit = st.checkbox(
@@ -739,7 +739,7 @@ def assessment_page(models, recommended_key: str) -> None:
 
     action_col, _ = st.columns([1, 3])
     with action_col:
-        run_assessment = st.button("Run Assessment  ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢", type="primary", key="run_assessment_button", width="stretch")
+        run_assessment = st.button("Run Assessment  →", type="primary", key="run_assessment_button", width="stretch")
     input_key = assessment_input_key(analysis_images, px_cm)
     saved_result = st.session_state.get("assessment_result")
     if saved_result and saved_result["input_key"] != input_key:
@@ -773,7 +773,7 @@ def assessment_page(models, recommended_key: str) -> None:
 
     # --- Instant Side-by-Side Model Comparison ---
     latest_img_name = selected_filename
-    st.markdown(f"### ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€šÃ‚ÂÃƒâ€¦Ã¢â‚¬â„¢ Instant Algorithm Comparison (Mode A) ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â `{latest_img_name}`")
+    st.markdown(f"### 🍌 Instant Algorithm Comparison (Mode A) — `{latest_img_name}`")
     
     # 4 balanced horizontal prediction cards spanning the screen evenly
     m_cols = st.columns(len(models))
@@ -781,7 +781,7 @@ def assessment_page(models, recommended_key: str) -> None:
         rec_match = next((r for r in all_records if r.algorithm == p_obj.display_name and r.filename == latest_img_name), None)
         with m_cols[idx]:
             is_best = (m_key == recommended_key)
-            tag = "ÃƒÆ’Ã‚Â¢Ãƒâ€šÃ‚Â­Ãƒâ€šÃ‚Â Recommended Model" if is_best else f"Member {chr(65+idx)}"
+            tag = "⭐ Recommended Model" if is_best else f"Member {chr(65+idx)}"
             accent = PIPELINE_ACCENTS[idx % len(PIPELINE_ACCENTS)]
             pred_text = rec_match.predicted_class.title() if rec_match else "N/A"
             conf_text = f"{rec_match.confidence:.1%}" if rec_match else "N/A"
@@ -809,14 +809,14 @@ def assessment_page(models, recommended_key: str) -> None:
     st.divider()
 
     # Expanders with expanded=True on the Deep Dive Explorer
-    with st.expander("ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€šÃ‚Â Deep-Dive Pipeline Explorer (Inspect Masks, Contours & Probabilities)", expanded=True):
+    with st.expander("🔍 Deep-Dive Pipeline Explorer (Inspect Masks, Contours & Probabilities)", expanded=True):
         st.caption("Select any pipeline tab below to inspect its intermediate computer vision stages, color distributions, and blemish detection.")
         tabs = st.tabs([pipeline.display_name for pipeline, _ in models.values()])
         for tab, (pipeline, _), accent in zip(tabs, models.values(), PIPELINE_ACCENTS, strict=True):
             with tab:
                 render_pipeline_tab(pipeline.display_name, [r for r in all_records if r.algorithm == pipeline.display_name], analysis_images, accent, px_cm)
 
-    with st.expander("ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒâ€¦Ã‚Â  Advanced Consensus Summary & Data Exports (Batch Auditing)", expanded=False):
+    with st.expander("📊 Advanced Consensus Summary & Data Exports (Batch Auditing)", expanded=False):
         st.caption("Aggregated statistical ledger and commercial grade distribution across all evaluated images.")
         assessment_summary(all_records, models[recommended_key][0].display_name)
 
@@ -830,10 +830,10 @@ def video_analysis_page(models, recommended_key: str) -> None:
     )
     pipeline, _ = models[recommended_key]
     st.markdown(f"**Active grading pipeline:** `{pipeline.display_name}`")
-    st.caption("Pipeline: decode ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ sample ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ segment ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ classify ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ detect blemishes ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ calibrate ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ grade ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ track.")
+    st.caption("Pipeline: decode → sample → segment → classify → detect blemishes → calibrate → grade → track.")
 
     video_tab, live_tab, snapshot_tab = st.tabs(
-        ["ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€¦Ã‚Â½Ãƒâ€šÃ‚Â¥ Uploaded video analysis", "ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒâ€šÃ‚Â¹ Continuous camera", "ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒâ€šÃ‚Â¸ Camera snapshot"]
+        ["🎥 Uploaded video analysis", "📹 Continuous camera", "📸 Camera snapshot"]
     )
 
     with video_tab:
@@ -849,7 +849,7 @@ def video_analysis_page(models, recommended_key: str) -> None:
             try:
                 metadata = probe_video(video_bytes, video_file.name)
                 m1, m2, m3, m4 = st.columns(4)
-                m1.metric("Resolution", f"{metadata.width} ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â {metadata.height}")
+                m1.metric("Resolution", f"{metadata.width} × {metadata.height}")
                 m2.metric("Duration", f"{metadata.duration_sec:.1f} s")
                 m3.metric("Source FPS", f"{metadata.fps:.2f}")
                 m4.metric("Codec", metadata.codec)
@@ -861,7 +861,7 @@ def video_analysis_page(models, recommended_key: str) -> None:
                 c1, c2, c3, c4 = st.columns(4)
                 sample_fps = c1.slider(
                     "Requested sample FPS", 0.5, 10.0, 2.0, 0.5,
-                    help="Controls how many frames per second are sampled for analysis. Higher values capture faster changes but take longer and may repeat the same fruit. Recommended: 2 FPS for normal conveyor footage; 4ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ5 FPS for fast motion.",
+                    help="Controls how many frames per second are sampled for analysis. Higher values capture faster changes but take longer and may repeat the same fruit. Recommended: 2 FPS for normal conveyor footage; 4–5 FPS for fast motion.",
                 )
                 max_frames = c2.number_input(
                     "Maximum sampled frames", 10, 1000, 120, 10,
@@ -873,19 +873,19 @@ def video_analysis_page(models, recommended_key: str) -> None:
                 )
                 confidence_threshold = c4.slider(
                     "Uncertain below", 0.0, 1.0, 0.55, 0.05,
-                    help="Predictions below this probability are labelled Uncertain instead of forcing a ripeness class. Recommended: 0.55 for balanced use; 0.65ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ0.70 when avoiding false confident results matters more.",
+                    help="Predictions below this probability are labelled Uncertain instead of forcing a ripeness class. Recommended: 0.55 for balanced use; 0.65–0.70 when avoiding false confident results matters more.",
                 )
                 st.caption("Centimetre measurements are estimates. Set pixels/cm using a ruler or known-size reference in the same image plane.")
                 if metadata:
                     effective = metadata.fps / max(1, round(metadata.fps / sample_fps))
                     expected = min(int(max_frames), int(np.ceil(metadata.total_frames / max(1, round(metadata.fps / sample_fps)))))
-                    st.info(f"Expected samples: {expected} ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· effective sample rate: {effective:.2f} FPS ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· cap: {int(max_frames)} frames")
+                    st.info(f"Expected samples: {expected} · effective sample rate: {effective:.2f} FPS · cap: {int(max_frames)} frames")
 
             result_key = hashlib.sha256(
                 video_bytes + f"{pipeline.display_name}|{sample_fps}|{max_frames}|{v_px_cm}|{confidence_threshold}".encode()
             ).hexdigest()
             if st.button("Analyse uploaded video", type="primary", width="stretch", disabled=metadata is None):
-                progress = st.progress(0.0, text="Preparing video analysisÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦")
+                progress = st.progress(0.0, text="Preparing video analysis…")
                 def update_progress(done: int, total: int) -> None:
                     progress.progress(min(done / total, 1.0), text=f"Analysing sampled frame {done} of {total}")
                 try:
@@ -935,7 +935,7 @@ def video_analysis_page(models, recommended_key: str) -> None:
                 st.subheader("Tracked-frame inspector")
                 if res.sampled_frames:
                     options = [
-                        f"Source frame {int(res.timeline_df.iloc[i]['source_frame_index'])} ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· {t:.2f}s"
+                        f"Source frame {int(res.timeline_df.iloc[i]['source_frame_index'])} · {t:.2f}s"
                         for i, (t, _, _, _) in enumerate(res.sampled_frames)
                     ]
                     selected = st.select_slider(
@@ -945,13 +945,13 @@ def video_analysis_page(models, recommended_key: str) -> None:
                     idx = options.index(selected)
                     t_sec, annotated, record, geometry = res.sampled_frames[idx]
                     left, right = st.columns([1.4, 1])
-                    left.image(annotated, caption=f"{selected} ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· object {geometry.get('object_id') or 'not detected'}", width="stretch")
+                    left.image(annotated, caption=f"{selected} · object {geometry.get('object_id') or 'not detected'}", width="stretch")
                     if not geometry["detection_valid"]:
                         right.warning("No credible fruit contour was detected; calibrated measurements are suppressed.")
                     else:
                         label = "Uncertain" if record.confidence < confidence_threshold else record.predicted_class.title()
                         right.markdown(f"**Result:** `{label}`  \n**Grade:** `{geometry['quality_grade']}`  \n**Confidence:** `{record.confidence:.1%}`")
-                        right.markdown(f"**Blemish:** `{geometry['blemish_ratio']:.1%}`  \n**Dimensions:** `{geometry['physical_length_cm']:.1f} ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â {geometry['physical_width_cm']:.1f} cm`")
+                        right.markdown(f"**Blemish:** `{geometry['blemish_ratio']:.1%}`  \n**Dimensions:** `{geometry['physical_length_cm']:.1f} × {geometry['physical_width_cm']:.1f} cm`")
 
                 st.subheader("Complete sampled-frame ledger")
                 st.dataframe(res.timeline_df, hide_index=True, width="stretch")
@@ -1026,7 +1026,7 @@ def video_analysis_page(models, recommended_key: str) -> None:
         s1, s2 = st.columns(2)
         snapshot_px_cm = s1.slider(
             "Snapshot pixels per cm", 1.0, 80.0, DEFAULT_PIXELS_PER_CM, 0.5, key="snapshot_scale",
-            help="Converts snapshot pixels into centimetres. Photograph a ruler or known-size marker in the same plane and enter pixels ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â· centimetres. Recommended: measure per camera setup; 10 px/cm is only illustrative.",
+            help="Converts snapshot pixels into centimetres. Photograph a ruler or known-size marker in the same plane and enter pixels ÷ centimetres. Recommended: measure per camera setup; 10 px/cm is only illustrative.",
         )
         snapshot_threshold = s2.slider(
             "Snapshot uncertain threshold", 0.0, 1.0, 0.55, 0.05, key="snapshot_threshold",
@@ -1035,7 +1035,7 @@ def video_analysis_page(models, recommended_key: str) -> None:
         st.caption("Set pixels/cm from a ruler or known-size object photographed beside the banana.")
         cam_image = st.camera_input(
             "Take a photo of a banana",
-            help="Captures one still image for segmentation and classification. Recommended: show one banana, fill roughly 30ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ70% of the frame, use diffuse lighting, keep the image sharp, and use a plain contrasting background.",
+            help="Captures one still image for segmentation and classification. Recommended: show one banana, fill roughly 30–70% of the frame, use diffuse lighting, keep the image sharp, and use a plain contrasting background.",
         )
         if cam_image is not None:
             try:
@@ -1045,7 +1045,7 @@ def video_analysis_page(models, recommended_key: str) -> None:
                     st.warning("No credible banana contour was detected. Retake the image against a contrasting background.")
                 st.markdown(
                     f'<div class="result-card"><b>Camera snapshot assessment</b><br>Result: <b>{label.title()}</b> | '
-                    f'Grade: <b>{geometry["quality_grade"]}</b> ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· Confidence: {record.confidence:.1%} ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· '
+                    f'Grade: <b>{geometry["quality_grade"]}</b> · Confidence: {record.confidence:.1%} · '
                     f'Processing: {record.processing_time_ms:.1f} ms</div>', unsafe_allow_html=True,
                 )
                 c1, c2, c3 = st.columns(3)
@@ -1075,7 +1075,7 @@ def filter_lab_page(models) -> None:
         )
         g_sigma = st.slider(
             "Gaussian sigma", 0.5, 5.0, 1.5, step=0.5,
-            help="Controls Gaussian blur strength. Higher values smooth more aggressively. Recommended: 1.0ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ1.5 to reduce noise while retaining blemish edges.",
+            help="Controls Gaussian blur strength. Higher values smooth more aggressively. Recommended: 1.0–1.5 to reduce noise while retaining blemish edges.",
         )
     with f_control_col2:
         m_k = st.slider(
@@ -1085,14 +1085,14 @@ def filter_lab_page(models) -> None:
     with f_control_col3:
         b_d = st.slider(
             "Bilateral diameter", 3, 15, 9, step=2,
-            help="Sets the bilateral filter neighbourhood. It smooths peel texture while preserving strong boundaries. Recommended: 7ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ9; reduce to 5 when fine blemishes disappear.",
+            help="Sets the bilateral filter neighbourhood. It smooths peel texture while preserving strong boundaries. Recommended: 7–9; reduce to 5 when fine blemishes disappear.",
         )
 
     gaussian_img = apply_gaussian_filter(raw_image, kernel_size=g_k, sigma=g_sigma)
     median_img = apply_median_filter(raw_image, kernel_size=m_k)
     bilateral_img = apply_bilateral_filter(raw_image, d=b_d)
     f_image_col1, f_image_col2, f_image_col3 = st.columns(3)
-    f_image_col1.image(gaussian_img, caption=f"Gaussian Filter (k={g_k}, ÃƒÆ’Ã‚ÂÃƒâ€ Ã¢â‚¬â„¢={g_sigma})", width="stretch")
+    f_image_col1.image(gaussian_img, caption=f"Gaussian Filter (k={g_k}, σ={g_sigma})", width="stretch")
     f_image_col2.image(median_img, caption=f"Median Filter (k={m_k}) - Impulse noise removal", width="stretch")
     f_image_col3.image(bilateral_img, caption=f"Bilateral Filter (d={b_d}) - Edge-preserving", width="stretch")
 
@@ -1102,7 +1102,7 @@ def filter_lab_page(models) -> None:
     with clahe_control_col:
         clahe_clip = st.slider(
             "CLAHE clip limit", 1.0, 6.0, 2.5, step=0.5,
-            help="Limits local contrast amplification. High values reveal subtle colour differences but can amplify noise. Recommended: 2.0ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ2.5 for uneven lighting.",
+            help="Limits local contrast amplification. High values reveal subtle colour differences but can amplify noise. Recommended: 2.0–2.5 for uneven lighting.",
         )
 
     stretched_img = apply_contrast_stretching(raw_image)
@@ -1142,7 +1142,7 @@ def filter_lab_page(models) -> None:
         )
         dark_v_thresh = st.slider(
             "Darkness Threshold (V-channel)", 20, 100, 65,
-            help="Marks sufficiently dark fruit pixels as possible necrotic spots. Higher values increase sensitivity but can include natural shadows. Recommended: 60ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ65 under diffuse lighting.",
+            help="Marks sufficiently dark fruit pixels as possible necrotic spots. Higher values increase sensitivity but can include natural shadows. Recommended: 60–65 under diffuse lighting.",
         )
     with t_col2:
         custom_masks = colour_masks(
@@ -1305,7 +1305,7 @@ def training_page(models) -> None:
     }
     st.subheader("Experiment preview")
     cols = st.columns(4)
-    for column, (label, value) in zip(cols, [("Pipelines", len(selected)), ("Classes", len(CLASS_NAMES)), ("Image size", "224 ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â 224"), ("Selection metric", "Macro-F1")], strict=True):
+    for column, (label, value) in zip(cols, [("Pipelines", len(selected)), ("Classes", len(CLASS_NAMES)), ("Image size", "224 × 224"), ("Selection metric", "Macro-F1")], strict=True):
         column.metric(label, value)
     st.code(subprocess.list2cmdline(command), language="powershell")
     st.download_button("Export configuration JSON", json.dumps(configuration, indent=2), "training_configuration.json", "application/json")
