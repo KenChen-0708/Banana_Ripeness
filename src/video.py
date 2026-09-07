@@ -107,8 +107,57 @@ def probe_video(video_source: str | Path | bytes | bytearray, source_filename: s
 
 
 def _detection_is_valid(geometry: dict[str, Any]) -> bool:
-    area_ratio = float(geometry.get("pixel_area", 0.0)) / (224.0 * 224.0)
+    width, height = geometry.get("analysis_size", (224, 224))
+    area_ratio = float(geometry.get("pixel_area", 0.0)) / max(1.0, float(width * height))
     return geometry.get("contour") is not None and 0.015 <= area_ratio <= 0.92
+
+
+def live_preview_size(frame_rgb: np.ndarray, target_width: int = 640) -> tuple[int, int]:
+    """Return an aspect-ratio-preserving size suitable for a browser camera preview."""
+    height, width = frame_rgb.shape[:2]
+    if width <= 0 or height <= 0:
+        return target_width, target_width
+    return target_width, max(1, round(height * target_width / width))
+
+
+def draw_live_overlay(image: np.ndarray, lines: list[str]) -> np.ndarray:
+    """Draw compact, width-fitted live results without obscuring most of the frame."""
+    if not lines:
+        return image
+
+    annotated = image.copy()
+    height, width = annotated.shape[:2]
+    margin = max(6, round(width * 0.0125))
+    line_height = max(16, round(height * 0.045))
+    panel_height = min(height, margin * 2 + line_height * len(lines))
+    panel = annotated[:panel_height].copy()
+    panel[:] = (12, 28, 23)
+    annotated[:panel_height] = cv2.addWeighted(
+        annotated[:panel_height], 0.25, panel, 0.75, 0
+    )
+
+    max_text_width = max(1, width - margin * 2)
+    for index, text in enumerate(lines):
+        font_scale = min(0.55, max(0.34, width / 1400.0))
+        while font_scale > 0.28:
+            (text_width, _), _ = cv2.getTextSize(
+                text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, 1
+            )
+            if text_width <= max_text_width:
+                break
+            font_scale -= 0.02
+        baseline_y = margin + line_height * index + round(line_height * 0.72)
+        cv2.putText(
+            annotated,
+            text,
+            (margin, baseline_y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            font_scale,
+            (245, 250, 247),
+            1,
+            cv2.LINE_AA,
+        )
+    return annotated
 
 
 def analyse_frame(
@@ -117,22 +166,26 @@ def analyse_frame(
     pixels_per_cm: float,
     confidence_threshold: float = 0.55,
     filename: str = "camera_frame",
+    output_size: tuple[int, int] = (224, 224),
+    show_status: bool = True,
 ) -> tuple[np.ndarray, PredictionRecord, dict[str, Any], str]:
     """Analyse and annotate one RGB frame for file or camera use."""
     record = pipeline.predict(frame_rgb, filename=filename)
-    geometry = calibrate_fruit_geometry(frame_rgb, pixels_per_cm=pixels_per_cm)
+    geometry = calibrate_fruit_geometry(
+        frame_rgb, pixels_per_cm=pixels_per_cm, size=output_size
+    )
     valid = _detection_is_valid(geometry)
     grade = determine_quality_grade(record.predicted_class, geometry["blemish_ratio"]) if valid else "No valid fruit detected"
     label = record.predicted_class if record.confidence >= confidence_threshold else "uncertain"
     geometry.update(detection_valid=valid, quality_grade=grade)
     annotated = (
-        draw_annotated_geometry(frame_rgb, geometry)
+        draw_annotated_geometry(frame_rgb, geometry, size=output_size)
         if valid
-        else cv2.resize(frame_rgb, (224, 224), interpolation=cv2.INTER_AREA)
+        else cv2.resize(frame_rgb, output_size, interpolation=cv2.INTER_AREA)
     )
-    status = f"{label.upper()} ({record.confidence:.0%}) | {grade}"
-    cv2.putText(annotated, status, (8, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (255, 255, 255), 3, cv2.LINE_AA)
-    cv2.putText(annotated, status, (8, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (24, 74, 53), 1, cv2.LINE_AA)
+    if show_status:
+        status = f"{label.upper()} ({record.confidence:.0%}) | {grade}"
+        annotated = draw_live_overlay(annotated, [status])
     return annotated, record, geometry, label
 
 

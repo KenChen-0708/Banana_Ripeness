@@ -23,7 +23,14 @@ from src.preprocessing import (
     draw_annotated_geometry,
 )
 from src.types import PredictionRecord
-from src.video import VideoValidationError, probe_video, process_video
+from src.video import (
+    VideoValidationError,
+    analyse_frame,
+    draw_live_overlay,
+    live_preview_size,
+    probe_video,
+    process_video,
+)
 
 
 @pytest.fixture
@@ -74,6 +81,43 @@ def test_spatial_calibration_and_annotation(synthetic_fruit_image):
     annotated = draw_annotated_geometry(synthetic_fruit_image, geom)
     assert annotated.shape == (224, 224, 3)
     assert annotated.dtype == np.uint8
+
+
+def test_live_preview_preserves_camera_aspect_ratio(synthetic_fruit_image):
+    assert live_preview_size(synthetic_fruit_image) == (640, 480)
+
+
+def test_live_overlay_is_compact_and_keeps_frame_dimensions():
+    image = np.full((480, 640, 3), 180, dtype=np.uint8)
+    lines = [
+        "QUALITY: Grade A (Premium)",
+        "Morphology + GLCM + Random Forest: RIPE 98%",
+        "HSV Histogram + Random Forest: RIPE 97%",
+        "HSV Segmentation + Brown Spot Rules: RIPE 96%",
+        "L*a*b* K-Means + KNN: RIPE 95%",
+    ]
+
+    annotated = draw_live_overlay(image, lines)
+
+    assert annotated.shape == image.shape
+    assert np.any(annotated[:120] != image[:120])
+    assert np.array_equal(annotated[140:], image[140:])
+
+
+def test_live_analysis_can_return_a_widescreen_frame(synthetic_fruit_image):
+    pipeline = create_pipeline("hsv_rf")
+    pipeline.fit([synthetic_fruit_image] * 4, list(CLASS_NAMES))
+
+    annotated, _, geometry, _ = analyse_frame(
+        synthetic_fruit_image,
+        pipeline,
+        DEFAULT_PIXELS_PER_CM,
+        output_size=(640, 480),
+        show_status=False,
+    )
+
+    assert annotated.shape == (480, 640, 3)
+    assert geometry["analysis_size"] == (640, 480)
 
 
 def test_determine_quality_grade():
