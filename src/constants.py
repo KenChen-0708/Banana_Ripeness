@@ -7,6 +7,7 @@ DEFAULT_ARTIFACT_DIR = PROJECT_ROOT / "artifacts"
 FEATURE_VERSION = "1.0"
 RANDOM_STATE = 42
 DEFAULT_PIXELS_PER_CM = 10.0
+PIPELINE_IMAGE_SIZE = (224, 224)
 
 QUALITY_GRADES = {
     "Grade A (Premium)": "Clean fruit with minimal blemish (< 5% surface spots)",

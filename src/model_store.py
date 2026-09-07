@@ -8,7 +8,7 @@ from typing import Any
 import joblib
 
 from .constants import CLASS_NAMES
-from .pipelines import BaseBananaPipeline
+from .pipelines import BaseBananaPipeline, create_pipeline
 
 MANIFEST_SCHEMA_VERSION = 1
 
@@ -67,7 +67,11 @@ def load_bundle(model_path: str | Path) -> tuple[BaseBananaPipeline, dict[str, A
     manifest = bundle["manifest"]
     if not isinstance(pipeline, BaseBananaPipeline):
         raise IncompatibleModelError("Bundle does not contain a banana pipeline.")
-    validate_manifest(manifest, pipeline)
+    try:
+        current_pipeline = create_pipeline(str(manifest.get("pipeline_key", "")))
+    except ValueError as exc:
+        raise IncompatibleModelError("Bundle belongs to an unknown pipeline.") from exc
+    validate_manifest(manifest, current_pipeline)
     return pipeline, manifest
 
 

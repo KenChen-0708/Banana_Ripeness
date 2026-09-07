@@ -18,22 +18,19 @@ from sklearn.ensemble import RandomForestClassifier
 
 from src.constants import RANDOM_STATE
 from src.pipelines.base import BaseBananaPipeline
-from src.preprocessing import banana_mask, resize_rgb
 
 
 class GLCMMorphologyRandomForestPipeline(BaseBananaPipeline):
     key = "glcm_rf"
     display_name = "Morphology + GLCM + Random Forest"
-    feature_version = "glcm-morphology-grabcut-v2"
-    image_size = (128, 128)
+    feature_version = "glcm-morphology-shared-preprocess-v3"
     member_name = "Lee Siu Yee"
     task_description = "GLCM Texture Feature Extraction + Morphological Processing + Random Forest"
     report_section = "Section 2.3"
 
     def extract_features(self, image: np.ndarray) -> np.ndarray:
-        rgb = resize_rgb(image, self.image_size)
+        rgb, mask = self.preprocess(image)
         gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
-        mask = banana_mask(image, self.image_size)
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
         refined = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
         refined = cv2.morphologyEx(refined, cv2.MORPH_OPEN, kernel, iterations=1)

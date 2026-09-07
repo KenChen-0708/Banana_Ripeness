@@ -20,24 +20,21 @@ from sklearn.preprocessing import StandardScaler
 
 from src.constants import RANDOM_STATE
 from src.pipelines.base import BaseBananaPipeline
-from src.preprocessing import banana_mask, resize_rgb
 
 
 class LabKMeansKNNPipeline(BaseBananaPipeline):
     key = "lab_knn"
     display_name = "L*a*b* K-Means + KNN"
-    feature_version = "lab-kmeans4-grabcut-v2"
-    image_size = (96, 96)
+    feature_version = "lab-kmeans4-shared-preprocess-v3"
     cluster_count = 4
     member_name = "Lim Tze Chuen"
     task_description = "K-Means Clustering with L*a*b* Colour Space + K-Nearest Neighbours"
     report_section = "Section 2.2"
 
     def extract_features(self, image: np.ndarray) -> np.ndarray:
-        rgb = resize_rgb(image, self.image_size)
+        rgb, mask = self.preprocess(image)
         lab = cv2.cvtColor(rgb, cv2.COLOR_RGB2LAB).astype(np.float32)
-        mask = banana_mask(image, self.image_size) > 0
-        pixels = lab[mask]
+        pixels = lab[mask > 0]
         if pixels.shape[0] < self.cluster_count:
             pixels = lab.reshape(-1, 3)
         if pixels.shape[0] > 2048:

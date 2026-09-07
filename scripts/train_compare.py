@@ -39,7 +39,10 @@ def extract_features(
 ) -> tuple[np.ndarray, np.ndarray]:
     if use_cache and cache_path.exists():
         cached = np.load(cache_path, allow_pickle=False)
-        if list(cached["paths"]) == [str(item.path) for item in items]:
+        if (
+            cached["feature_version"].item() == pipeline.feature_version
+            and list(cached["paths"]) == [str(item.path) for item in items]
+        ):
             return cached["features"], cached["labels"]
 
     features: list[np.ndarray] = []
@@ -58,6 +61,7 @@ def extract_features(
         features=matrix,
         labels=label_array,
         paths=np.asarray([str(item.path) for item in items]),
+        feature_version=np.asarray(pipeline.feature_version),
     )
     return matrix, label_array
 
@@ -85,7 +89,7 @@ def train_pipeline(
     matrices: dict[str, np.ndarray] = {}
     labels: dict[str, np.ndarray] = {}
     for split, items in splits.items():
-        cache = artifact_dir / "cache" / f"{key}_{split}.npz"
+        cache = artifact_dir / "cache" / f"{key}_{pipeline.feature_version}_{split}.npz"
         matrices[split], labels[split] = extract_features(pipeline, items, cache, use_cache)
 
     pipeline.fit_features(matrices["train"], labels["train"])

@@ -10,6 +10,7 @@ A Streamlit application that compares four classical image-processing pipelines 
   2. *L\*a\*b\* K-Means Color Quantisation + KNN*
   3. *HSV Segmentation + Brown Spot Ratio + SVM*
   4. *Morphology + GLCM Texture + Random Forest*
+- **Fair shared classifier preprocessing**: Every pipeline uses the same `224×224` RGB resize, median-and-bilateral denoising, and GrabCut-refined banana foreground mask before its algorithm-specific feature extraction.
 - **Multimodal Ingestion**:
   - Single & batch image upload.
   - Optional single-image manual banana crop before assessment; the confirmed crop is passed through the existing segmentation and model pipelines.
@@ -76,7 +77,7 @@ The command writes versioned model bundles and evaluation data under `artifacts/
 ## Main project structure
 
 - `app.py` - Streamlit Studio interface (Assessment Studio, Video & Camera, Filter Lab, Evaluation, Training).
-- `src/preprocessing.py` - Classical filtering (Gaussian, Median, Bilateral, CLAHE), morphology, blemish segmentation, and spatial calibration.
+- `src/preprocessing.py` - Shared classifier input preprocessing, classical filtering (Gaussian, Median, Bilateral, CLAHE), morphology, blemish segmentation, and spatial calibration.
 - `src/video.py` - Video stream and conveyor frame analysis module.
 - `src/pipelines/` - Base pipeline contract and 4 classical feature extraction models.
 - `src/exports.py` - Multi-page PDF audit and CSV export generator.

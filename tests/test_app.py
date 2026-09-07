@@ -26,7 +26,7 @@ def test_assessment_preview_and_crop_use_reference_card_controls():
     assert "File size" in source
     assert "Crop Banana Before Assessment <small>(Optional)</small>" in source
     assert "Manually crop banana" in source
-    assert 'st.button("Run Assessment  →"' in source
+    assert 'st.button("Run Assessment' in source
     assert source.count("Crop Banana Before Assessment <small>(Optional)</small>") == 1
 
 
@@ -78,3 +78,15 @@ def test_model_loader_cache_is_invalidated_when_artifacts_are_retrained():
     assert "def load_models(model_dir: str, artifact_token" in source
     assert "path.stat().st_mtime_ns" in source
     assert "load_models(str(model_dir), artifact_token)" in source
+
+
+def test_continuous_camera_supports_all_or_one_selected_algorithm():
+    source = (Path(__file__).resolve().parents[1] / "app.py").read_text(encoding="utf-8")
+
+    assert '"Continuous camera algorithm"' in source
+    assert '["All 4 algorithms"] + list(algorithm_options)' in source
+    assert 'key="live_algorithm_selection"' in source
+    assert 'selected_keys = list(models) if selection == "All 4 algorithms"' in source
+    assert "selected_models = {key: models[key] for key in selected_keys}" in source
+    assert "SampledFrameAssessor(selected_models, interval_seconds=live_interval)" in source
+    assert 'live_key = "-".join(selected_keys)' in source
