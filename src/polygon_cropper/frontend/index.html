@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: transparent; color: #d9e6df; font: 13px system-ui, sans-serif; }
+    #editor { display: inline-flex; max-width: 100%; flex-direction: column; gap: 7px; }
+    canvas { display: block; max-width: 100%; height: auto; border: 1px solid #34524a; border-radius: 8px; cursor: crosshair; touch-action: none; }
+    .hint { color: #95aaa2; line-height: 1.35; }
+  </style>
+</head>
+<body>
+  <div id="editor">
+    <canvas id="canvas"></canvas>
+    <div class="hint">Click around the banana to add points. Drag a point to adjust it. Double-click a point to remove it.</div>
+  </div>
+  <script>
+    const canvas = document.getElementById("canvas");
+    const context = canvas.getContext("2d");
+    const editor = document.getElementById("editor");
+    const image = new Image();
+    let points = [];
+    let dragging = -1;
+    let imageSource = "";
+
+    function send(type, extra = {}) {
+      window.parent.postMessage({ isStreamlitMessage: true, type, ...extra }, "*");
+    }
+
+    function emit() {
+      send("streamlit:setComponentValue", { value: { points }, dataType: "json" });
+    }
+
+    function resizeFrame() {
+      requestAnimationFrame(() => send("streamlit:setFrameHeight", { height: editor.offsetHeight + 2 }));
+    }
+
+    function draw() {
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      if (image.complete && image.naturalWidth) context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      if (points.length > 0) {
+        context.beginPath();
+        context.moveTo(points[0][0], points[0][1]);
+        for (let index = 1; index < points.length; index += 1) context.lineTo(points[index][0], points[index][1]);
+        if (points.length >= 3) {
+          context.closePath();
+          context.fillStyle = "rgba(125, 229, 142, 0.20)";
+          context.fill();
+        }
+        context.strokeStyle = "#7de58e";
+        context.lineWidth = 2;
+        context.stroke();
+      }
+      points.forEach((point, index) => {
+        context.beginPath();
+        context.arc(point[0], point[1], index === dragging ? 7 : 6, 0, Math.PI * 2);
+        context.fillStyle = index === 0 ? "#f4b942" : "#7de58e";
+        context.fill();
+        context.strokeStyle = "#09211a";
+        context.lineWidth = 2;
+        context.stroke();
+      });
+    }
+
+    function pointerPosition(event) {
+      const bounds = canvas.getBoundingClientRect();
+      return [
+        Math.max(0, Math.min(canvas.width - 1, (event.clientX - bounds.left) * canvas.width / bounds.width)),
+        Math.max(0, Math.min(canvas.height - 1, (event.clientY - bounds.top) * canvas.height / bounds.height)),
+      ];
+    }
+
+    function nearestPoint(position, radius = 13) {
+      let found = -1;
+      let best = radius * radius;
+      points.forEach((point, index) => {
+        const distance = (point[0] - position[0]) ** 2 + (point[1] - position[1]) ** 2;
+        if (distance <= best) { best = distance; found = index; }
+      });
+      return found;
+    }
+
+    canvas.addEventListener("pointerdown", event => {
+      event.preventDefault();
+      const position = pointerPosition(event);
+      dragging = nearestPoint(position);
+      if (dragging < 0) {
+        points.push(position);
+        dragging = points.length - 1;
+        emit();
+      }
+      canvas.setPointerCapture(event.pointerId);
+      draw();
+    });
+
+    canvas.addEventListener("pointermove", event => {
+      if (dragging < 0) return;
+      points[dragging] = pointerPosition(event);
+      draw();
+    });
+
+    canvas.addEventListener("pointerup", event => {
+      if (dragging < 0) return;
+      points[dragging] = pointerPosition(event);
+      dragging = -1;
+      draw();
+      emit();
+    });
+
+    canvas.addEventListener("dblclick", event => {
+      event.preventDefault();
+      const index = nearestPoint(pointerPosition(event));
+      if (index >= 0) {
+        points.splice(index, 1);
+        dragging = -1;
+        draw();
+        emit();
+      }
+    });
+
+    window.addEventListener("message", event => {
+      if (!event.data || event.data.type !== "streamlit:render") return;
+      const args = event.data.args || {};
+      if (args.image_data !== imageSource) {
+        imageSource = args.image_data || "";
+        canvas.width = Math.max(1, Number(args.width) || 420);
+        canvas.height = Math.max(1, Number(args.height) || 320);
+        points = Array.isArray(args.initial_points) ? args.initial_points.map(point => [Number(point[0]), Number(point[1])]) : [];
+        image.onload = () => { draw(); resizeFrame(); };
+        image.src = imageSource;
+      } else {
+        draw();
+        resizeFrame();
+      }
+    });
+
+    send("streamlit:componentReady", { apiVersion: 1 });
+  </script>
+</body>
+</html>
