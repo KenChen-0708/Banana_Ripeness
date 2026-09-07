@@ -5,7 +5,7 @@ from hashlib import sha256
 from typing import Mapping
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 
 
 MIN_CROP_DIMENSION = 32
@@ -23,6 +23,131 @@ class CropBox:
     top: int
     width: int
     height: int
+
+
+@dataclass(frozen=True, slots=True)
+class CropPolygon:
+    points: tuple[tuple[int, int], ...]
+
+
+def _segments_intersect(
+    first_start: tuple[int, int],
+    first_end: tuple[int, int],
+    second_start: tuple[int, int],
+    second_end: tuple[int, int],
+) -> bool:
+    def orientation(a: tuple[int, int], b: tuple[int, int], c: tuple[int, int]) -> int:
+        value = (b[1] - a[1]) * (c[0] - b[0]) - (b[0] - a[0]) * (c[1] - b[1])
+        return 0 if value == 0 else 1 if value > 0 else 2
+
+    def on_segment(a: tuple[int, int], b: tuple[int, int], c: tuple[int, int]) -> bool:
+        return min(a[0], c[0]) <= b[0] <= max(a[0], c[0]) and min(a[1], c[1]) <= b[1] <= max(a[1], c[1])
+
+    o1 = orientation(first_start, first_end, second_start)
+    o2 = orientation(first_start, first_end, second_end)
+    o3 = orientation(second_start, second_end, first_start)
+    o4 = orientation(second_start, second_end, first_end)
+    if o1 != o2 and o3 != o4:
+        return True
+    return (
+        (o1 == 0 and on_segment(first_start, second_start, first_end))
+        or (o2 == 0 and on_segment(first_start, second_end, first_end))
+        or (o3 == 0 and on_segment(second_start, first_start, second_end))
+        or (o4 == 0 and on_segment(second_start, first_end, second_end))
+    )
+
+
+def validate_crop_polygon(
+    image: np.ndarray,
+    points: list[tuple[float, float]] | tuple[tuple[float, float], ...],
+    minimum_dimension: int = MIN_CROP_DIMENSION,
+) -> CropPolygon:
+    """Validate a polygon selection against an RGB image."""
+    if not isinstance(image, np.ndarray) or image.ndim != 3 or image.shape[2] != 3:
+        raise CropValidationError("Polygon cropping requires an RGB image with three colour channels.")
+    if len(points) < 3:
+        raise CropValidationError("Place at least three points around the banana.")
+
+    height, width = image.shape[:2]
+    normalized = tuple((round(float(x)), round(float(y))) for x, y in points)
+    if len(set(normalized)) < 3:
+        raise CropValidationError("The polygon needs at least three different points.")
+    if any(x < 0 or y < 0 or x >= width or y >= height for x, y in normalized):
+        raise CropValidationError("Polygon points must remain inside the image boundaries.")
+
+    edge_count = len(normalized)
+    for first_index in range(edge_count):
+        first_edge = (normalized[first_index], normalized[(first_index + 1) % edge_count])
+        for second_index in range(first_index + 1, edge_count):
+            if second_index in {first_index, first_index + 1} or (first_index == 0 and second_index == edge_count - 1):
+                continue
+            second_edge = (normalized[second_index], normalized[(second_index + 1) % edge_count])
+            if _segments_intersect(*first_edge, *second_edge):
+                raise CropValidationError("Polygon edges must not cross each other.")
+
+    xs, ys = zip(*normalized, strict=True)
+    if max(xs) - min(xs) + 1 < minimum_dimension or max(ys) - min(ys) + 1 < minimum_dimension:
+        raise CropValidationError(
+            f"Polygon is too small. Select an area at least {minimum_dimension} × {minimum_dimension} pixels."
+        )
+    area = abs(
+        sum(
+            x1 * y2 - x2 * y1
+            for (x1, y1), (x2, y2) in zip(normalized, normalized[1:] + normalized[:1], strict=True)
+        )
+    ) / 2.0
+    if area < minimum_dimension * minimum_dimension / 2:
+        raise CropValidationError("Polygon area is too small.")
+    return CropPolygon(points=normalized)
+
+
+def crop_polygon_image(
+    image: np.ndarray,
+    polygon: CropPolygon,
+    background: tuple[int, int, int] = (245, 245, 245),
+) -> np.ndarray:
+    """Mask pixels outside a validated polygon and crop to its bounding rectangle."""
+    valid_polygon = validate_crop_polygon(image, polygon.points)
+    mask_image = Image.new("L", (image.shape[1], image.shape[0]), 0)
+    ImageDraw.Draw(mask_image).polygon(valid_polygon.points, fill=255)
+    mask = np.asarray(mask_image) > 0
+    masked = np.empty_like(image)
+    masked[:] = background
+    masked[mask] = image[mask]
+    xs, ys = zip(*valid_polygon.points, strict=True)
+    left, top = min(xs), min(ys)
+    right, bottom = max(xs) + 1, max(ys) + 1
+    return masked[top:bottom, left:right].copy()
+
+
+def polygon_to_display(
+    polygon: CropPolygon, original_image: np.ndarray, display_image: np.ndarray
+) -> list[tuple[float, float]]:
+    """Map a full-resolution polygon to editor display coordinates."""
+    original_height, original_width = original_image.shape[:2]
+    display_height, display_width = display_image.shape[:2]
+    return [
+        (x * display_width / original_width, y * display_height / original_height)
+        for x, y in polygon.points
+    ]
+
+
+def polygon_from_display(
+    points: list[list[float]] | list[tuple[float, float]],
+    original_image: np.ndarray,
+    display_image: np.ndarray,
+) -> CropPolygon:
+    """Map editor polygon points back to the original image resolution."""
+    original_height, original_width = original_image.shape[:2]
+    display_height, display_width = display_image.shape[:2]
+    mapped = [
+        (
+            min(original_width - 1, max(0, x * original_width / display_width)),
+            min(original_height - 1, max(0, y * original_height / display_height)),
+        )
+        for x, y in points
+    ]
+    return validate_crop_polygon(original_image, mapped)
 
 
 def validate_crop_box(
@@ -164,6 +289,23 @@ def confirm_crop_state(states: Mapping[str, dict], filename: str, image: np.ndar
     return updated
 
 
+def confirm_polygon_crop_state(
+    states: Mapping[str, dict], filename: str, image: np.ndarray, polygon: CropPolygon
+) -> dict[str, dict]:
+    """Store a full-resolution polygon crop for one image."""
+    key = image_crop_key(filename, image)
+    valid_polygon = validate_crop_polygon(image, polygon.points)
+    updated = dict(states)
+    updated[key] = {
+        "source_identity": key,
+        "filename": filename,
+        "crop_polygon": valid_polygon,
+        "confirmed_crop": crop_polygon_image(image, valid_polygon),
+        "status": "polygon_cropped",
+    }
+    return updated
+
+
 def reset_crop_state(states: Mapping[str, dict], filename: str, image: np.ndarray) -> dict[str, dict]:
     """Remove only one image's crop state."""
     updated = dict(states)
@@ -176,5 +318,9 @@ def analysis_images_for_assessment(images: Mapping[str, np.ndarray], states: Map
     analysis_images = {}
     for filename, image in images.items():
         state = states.get(image_crop_key(filename, image))
-        analysis_images[filename] = state["confirmed_crop"] if state and state.get("status") == "cropped" else image
+        analysis_images[filename] = (
+            state["confirmed_crop"]
+            if state and state.get("status") in {"cropped", "polygon_cropped"}
+            else image
+        )
     return analysis_images

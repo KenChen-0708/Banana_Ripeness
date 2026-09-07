@@ -37,10 +37,10 @@ def test_assessment_preview_and_crop_use_reference_card_controls():
     assert "Filename" in source
     assert "Dimensions" in source
     assert "File size" in source
-    assert "Crop Banana Before Assessment <small>(Optional)</small>" in source
-    assert "Manually crop banana" in source
+    assert "Outline Banana Before Assessment <small>(Optional)</small>" in source
+    assert "Draw polygon around banana" in source
     assert 'st.button("Run Assessment' in source
-    assert source.count("Crop Banana Before Assessment <small>(Optional)</small>") == 1
+    assert source.count("Outline Banana Before Assessment <small>(Optional)</small>") == 1
 
 
 def test_assessment_settings_follow_preview_and_crop_controls():
@@ -50,15 +50,16 @@ def test_assessment_settings_follow_preview_and_crop_controls():
     assert source.index("render_manual_crop_control(images, crop_states)") < source.index("Optional Benchmark, Calibration, and Forecast Settings")
 
 
-def test_manual_crop_does_not_render_a_duplicate_original_image_preview():
+def test_polygon_crop_uses_a_draggable_editor_without_duplicate_original_preview():
     source = (Path(__file__).resolve().parents[1] / "app.py").read_text(encoding="utf-8")
     manual_crop_section = source[source.index("def render_manual_crop_control") : source.index("def render_uploaded_image_preview")]
 
-    assert "st_cropper(" in manual_crop_section
-    assert 'st.markdown("**Cropped Preview**")' in manual_crop_section
+    assert "polygon_cropper(" in manual_crop_section
+    assert 'st.markdown("**Polygon Crop Preview**")' in manual_crop_section
     assert "st.image(pending_crop, width=400)" in manual_crop_section
     assert "resize_for_crop_editor(original_image)" in manual_crop_section
-    assert "should_resize_image=False" in manual_crop_section
+    assert "confirm_polygon_crop_state(" in manual_crop_section
+    assert "st_cropper(" not in source
 
 
 def test_assessment_crop_supports_per_image_selection_and_mixed_batch_inputs():

@@ -3,19 +3,25 @@ import pytest
 
 from src.cropping import (
     CropBox,
+    CropPolygon,
     CropValidationError,
     analysis_images_for_assessment,
     confirm_crop_state,
+    confirm_polygon_crop_state,
     crop_box_from_display,
     crop_box_to_display,
     crop_from_component_box,
     crop_image,
+    crop_polygon_image,
     gallery_thumbnail,
     image_crop_key,
+    polygon_from_display,
+    polygon_to_display,
     reconcile_crop_states,
     resize_for_crop_editor,
     reset_crop_state,
     validate_crop_box,
+    validate_crop_polygon,
 )
 from src.live_assessment import assess_image
 from src.types import PredictionRecord
@@ -41,6 +47,49 @@ def test_crop_does_not_change_original_and_reset_can_use_original(source_image):
     assert np.array_equal(source_image, original)
     reset_analysis_image = source_image
     assert np.array_equal(reset_analysis_image, original)
+
+
+def test_polygon_crop_masks_outside_pixels_and_keeps_its_bounding_area(source_image):
+    polygon = CropPolygon(((20, 20), (139, 20), (80, 99)))
+    cropped = crop_polygon_image(source_image, polygon)
+
+    assert cropped.shape == (80, 120, 3)
+    assert np.array_equal(cropped[0, 0], source_image[20, 20])
+    assert np.array_equal(cropped[0, -1], source_image[20, 139])
+    assert np.array_equal(cropped[-1, 0], np.array([245, 245, 245], dtype=np.uint8))
+    assert np.array_equal(source_image, np.arange(120 * 160 * 3, dtype=np.uint8).reshape(120, 160, 3))
+
+
+def test_polygon_requires_three_valid_points(source_image):
+    with pytest.raises(CropValidationError, match="at least three points"):
+        validate_crop_polygon(source_image, [(20, 20), (100, 20)])
+
+
+def test_polygon_rejects_crossing_edges(source_image):
+    with pytest.raises(CropValidationError, match="must not cross"):
+        validate_crop_polygon(source_image, [(10, 10), (140, 10), (30, 100), (120, 100)])
+
+
+def test_polygon_coordinates_round_trip_between_editor_and_original():
+    original = np.full((1200, 1600, 3), 100, dtype=np.uint8)
+    display = resize_for_crop_editor(original, maximum_dimension=400)
+    polygon = CropPolygon(((160, 120), (1120, 120), (800, 720)))
+
+    display_points = polygon_to_display(polygon, original, display)
+    mapped = polygon_from_display(display_points, original, display)
+
+    assert mapped == polygon
+
+
+def test_confirmed_polygon_is_used_as_the_assessment_image(source_image):
+    polygon = CropPolygon(((20, 20), (139, 20), (80, 99)))
+    states = confirm_polygon_crop_state({}, "banana.jpg", source_image, polygon)
+    analysis = analysis_images_for_assessment({"banana.jpg": source_image}, states)
+
+    state = states[image_crop_key("banana.jpg", source_image)]
+    assert state["crop_polygon"] == polygon
+    assert state["status"] == "polygon_cropped"
+    assert analysis["banana.jpg"].shape == (80, 120, 3)
 
 
 @pytest.mark.parametrize(

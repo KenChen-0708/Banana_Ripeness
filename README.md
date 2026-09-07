@@ -13,7 +13,7 @@ A Streamlit application that compares four classical image-processing pipelines 
 - **Fair shared classifier preprocessing**: Every pipeline uses the same `224×224` RGB resize, median-and-bilateral denoising, and GrabCut-refined banana foreground mask before its algorithm-specific feature extraction.
 - **Multimodal Ingestion**:
   - Single & batch image upload.
-  - Optional single-image manual banana crop before assessment; the confirmed crop is passed through the existing segmentation and model pipelines.
+  - Optional draggable polygon outline for each image; confirmed polygons mask the exact banana region before the existing segmentation and model pipelines run.
   - 1-click representative benchmark sample presets.
   - Auditable video-file ingestion (`.mp4`, `.avi`, `.mov`, `.mkv`) with metadata validation, sampled-frame tracking, separate temporal charts, uncertainty handling, CSV export, and annotated-video export.
   - Continuous browser-camera inspection through WebRTC plus calibrated single-snapshot assessment.

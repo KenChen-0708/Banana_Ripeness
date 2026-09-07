@@ -12,8 +12,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import streamlit as st
-from PIL import Image
-from streamlit_cropper import st_cropper
 
 from src.constants import (
     CLASS_NAMES,
@@ -24,15 +22,14 @@ from src.constants import (
     SAMPLE_PRESETS,
 )
 from src.cropping import (
-    CropBox,
     CropValidationError,
     analysis_images_for_assessment,
-    confirm_crop_state,
-    crop_box_from_display,
-    crop_box_to_display,
-    crop_from_component_box,
+    confirm_polygon_crop_state,
+    crop_polygon_image,
     gallery_thumbnail,
     image_crop_key,
+    polygon_from_display,
+    polygon_to_display,
     reconcile_crop_states,
     resize_for_crop_editor,
     reset_crop_state,
@@ -42,6 +39,7 @@ from src.forecasting import forecast_ripeness_progress
 from src.live_assessment import SampledFrameAssessor
 from src.model_store import IncompatibleModelError, discover_bundles
 from src.pipelines import PIPELINE_CLASSES
+from src.polygon_cropper import polygon_cropper
 from src.preprocessing import (
     ImageValidationError,
     apply_bilateral_filter,
@@ -486,21 +484,21 @@ def assessment_input_key(analysis_images: dict[str, np.ndarray], pixels_per_cm: 
 
 
 def render_manual_crop_control(images: dict[str, np.ndarray], crop_states: dict[str, dict]) -> tuple[str, dict[str, dict]]:
-    """Edit one selected image while preserving independent crop state for every upload."""
+    """Edit one image with a draggable polygon while preserving per-image crop state."""
     filenames = list(images)
     selected_filename = st.session_state.get("assessment_selected_image", filenames[0])
     if selected_filename not in images:
         selected_filename = filenames[0]
     with st.container(border=True):
-        st.markdown('<p class="crop-card-title"><span class="material-symbols-rounded">crop</span>Crop Banana Before Assessment <small>(Optional)</small></p>', unsafe_allow_html=True)
-        st.markdown('<p class="crop-card-subtitle">If automatic segmentation is not accurate, you can manually crop the banana region.</p>', unsafe_allow_html=True)
+        st.markdown('<p class="crop-card-title"><span class="material-symbols-rounded">polyline</span>Outline Banana Before Assessment <small>(Optional)</small></p>', unsafe_allow_html=True)
+        st.markdown('<p class="crop-card-subtitle">Place and drag polygon points around the banana to keep its exact region.</p>', unsafe_allow_html=True)
         mode = st.radio(
-            "Crop Banana Before Assessment",
-            ("Use original image", "Manually crop banana"),
+            "Outline Banana Before Assessment",
+            ("Use original image", "Draw polygon around banana"),
             horizontal=True,
             key="assessment_crop_mode",
             label_visibility="collapsed",
-            help="Cropping only changes the input image. Existing banana segmentation and all four model pipelines still run normally.",
+            help="The polygon masks everything outside the selected banana region. All four model pipelines still run normally.",
         )
         if mode == "Use original image":
             return selected_filename, crop_states
@@ -518,55 +516,49 @@ def render_manual_crop_control(images: dict[str, np.ndarray], crop_states: dict[
         source_key = image_crop_key(selected_filename, original_image)
         state = crop_states.get(source_key)
 
-        default_coords = None
         editor_image = resize_for_crop_editor(original_image)
-        if state:
-            box = state["crop_box"]
-            default_coords = crop_box_to_display(box, original_image, editor_image)
+        default_points = []
+        if state and state.get("crop_polygon"):
+            default_points = polygon_to_display(state["crop_polygon"], original_image, editor_image)
+        revision_key = f"polygon_editor_revision_{source_key}"
+        editor_revision = st.session_state.get(revision_key, 0)
 
         editor_col, preview_col, action_col = st.columns([1.35, 1, 0.8])
         with editor_col:
-            st.markdown("**Original Image**")
-            crop_result = st_cropper(
-                Image.fromarray(editor_image),
-                realtime_update=True,
-                default_coords=default_coords,
-                box_color="#7DE58E",
-                aspect_ratio=None,
-                return_type="both",
-                key=f"assessment_cropper_{source_key}",
-                should_resize_image=False,
+            st.markdown("**Polygon Editor**")
+            editor_result = polygon_cropper(
+                editor_image,
+                initial_points=default_points,
+                key=f"assessment_polygon_cropper_{source_key}_{editor_revision}",
             )
-            _, component_box = crop_result
-            st.caption("Drag to select the crop area")
+            st.caption("Add at least three points. Drag points to refine the outline; double-click a point to remove it.")
         try:
-            pending_box = crop_box_from_display(component_box, original_image, editor_image)
-            pending_crop = crop_from_component_box(
-                original_image,
-                {"left": pending_box.left, "top": pending_box.top, "width": pending_box.width, "height": pending_box.height},
-            )
+            component_points = editor_result.get("points", []) if isinstance(editor_result, dict) else []
+            pending_polygon = polygon_from_display(component_points, original_image, editor_image)
+            pending_crop = crop_polygon_image(original_image, pending_polygon)
         except CropValidationError as exc:
-            pending_crop, pending_box = None, None
-            preview_col.error(f"Invalid crop: {exc}")
+            pending_crop, pending_polygon = None, None
+            preview_col.info(str(exc))
         with preview_col:
-            st.markdown("**Cropped Preview**")
+            st.markdown("**Polygon Crop Preview**")
             if pending_crop is not None:
                 st.image(pending_crop, width=400)
                 st.caption(f"Preview: {pending_crop.shape[1]} × {pending_crop.shape[0]} px")
-                st.caption("Actual analysis uses the full-resolution crop.")
+                st.caption("The light area outside the polygon is excluded from the banana region.")
         with action_col:
             st.markdown("&nbsp;", unsafe_allow_html=True)
-            if st.button("✓  Confirm Crop", type="primary", disabled=pending_crop is None, key=f"confirm_assessment_crop_{source_key}", width="stretch"):
-                crop_states = confirm_crop_state(crop_states, selected_filename, original_image, pending_box)
+            if st.button("✓  Confirm Polygon", type="primary", disabled=pending_crop is None, key=f"confirm_assessment_crop_{source_key}", width="stretch"):
+                crop_states = confirm_polygon_crop_state(crop_states, selected_filename, original_image, pending_polygon)
                 st.session_state.assessment_crop_states = crop_states
                 st.rerun()
-            if st.button("↻  Reset Crop", key=f"reset_assessment_crop_{source_key}", width="stretch"):
+            if st.button("↻  Reset Polygon", key=f"reset_assessment_crop_{source_key}", width="stretch"):
                 crop_states = reset_crop_state(crop_states, selected_filename, original_image)
                 st.session_state.assessment_crop_states = crop_states
+                st.session_state[revision_key] = editor_revision + 1
                 st.rerun()
-            st.info("Only the selected image will be cropped. Other images remain unchanged.")
+            st.info("Only the selected image uses this polygon. Other images remain unchanged.")
         if source_key in crop_states:
-            st.success("Crop confirmed. This image will use its full-resolution crop during assessment.")
+            st.success("Polygon confirmed. This image will use its full-resolution masked crop during assessment.")
     return selected_filename, crop_states
 
 
