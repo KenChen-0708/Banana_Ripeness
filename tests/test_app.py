@@ -20,6 +20,17 @@ def test_assessment_page_defines_uploaded_image_preview():
     assert "render_uploaded_image_preview(images, image_metadata, crop_states, selected_filename)" in source
 
 
+def test_assessment_accepts_uploads_and_camera_photos_through_one_workflow():
+    source = (Path(__file__).resolve().parents[1] / "app.py").read_text(encoding="utf-8")
+
+    assert '["📁 Upload Images", "📷 Take Photo"]' in source
+    assert 'key="assessment_camera_capture"' in source
+    assert 'camera_filename = "Camera Capture.jpg"' in source
+    assert "images[camera_filename] = decode_image(camera_bytes)" in source
+    assert "st.session_state.assessment_selected_image = camera_filename" in source
+    assert source.index("images[camera_filename] = decode_image(camera_bytes)") < source.index("analysis_images_for_assessment(images, crop_states)")
+
+
 def test_assessment_preview_and_crop_use_reference_card_controls():
     source = (Path(__file__).resolve().parents[1] / "app.py").read_text(encoding="utf-8")
 
@@ -35,8 +46,8 @@ def test_assessment_preview_and_crop_use_reference_card_controls():
 def test_assessment_settings_follow_preview_and_crop_controls():
     source = (Path(__file__).resolve().parents[1] / "app.py").read_text(encoding="utf-8")
 
-    assert source.index("render_uploaded_image_preview(images, image_metadata, crop_states, selected_filename)") < source.index("Optional benchmark, calibration, and forecast settings")
-    assert source.index("render_manual_crop_control(images, crop_states)") < source.index("Optional benchmark, calibration, and forecast settings")
+    assert source.index("render_uploaded_image_preview(images, image_metadata, crop_states, selected_filename)") < source.index("Optional Benchmark, Calibration, and Forecast Settings")
+    assert source.index("render_manual_crop_control(images, crop_states)") < source.index("Optional Benchmark, Calibration, and Forecast Settings")
 
 
 def test_manual_crop_does_not_render_a_duplicate_original_image_preview():
@@ -91,10 +102,12 @@ def test_training_progress_records_are_parsed_and_clamped():
 def test_continuous_camera_supports_all_or_one_selected_algorithm():
     source = (Path(__file__).resolve().parents[1] / "app.py").read_text(encoding="utf-8")
 
-    assert '"Continuous camera algorithm"' in source
-    assert '["All 4 algorithms"] + list(algorithm_options)' in source
+    assert '"Live Camera Algorithm"' in source
+    assert 'st.tabs(["🎥 Uploaded Video", "📹 Live Camera"])' in source
+    assert "📸 Camera Snapshot" not in source
+    assert '["All 4 Algorithms"] + list(algorithm_options)' in source
     assert 'key="live_algorithm_selection"' in source
-    assert 'selected_keys = list(models) if selection == "All 4 algorithms"' in source
+    assert 'selected_keys = list(models) if selection == "All 4 Algorithms"' in source
     assert "selected_models = {key: models[key] for key in selected_keys}" in source
     assert "SampledFrameAssessor(selected_models, interval_seconds=live_interval)" in source
     assert 'live_key = "-".join(selected_keys)' in source
