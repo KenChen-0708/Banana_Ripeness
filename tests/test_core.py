@@ -1,17 +1,19 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
+import joblib
 import numpy as np
 import pytest
 
-from src.constants import CLASS_NAMES
+from src.constants import CLASS_NAMES, PIPELINE_IMAGE_SIZE
 from src.dataset import DatasetItem, assert_no_source_leakage
 from src.evaluation import evaluate_predictions, rank_results
 from src.exports import records_csv, records_pdf
-from src.model_store import IncompatibleModelError, validate_manifest
-from src.pipelines import create_pipeline
-from src.preprocessing import ImageValidationError, banana_mask, brown_spot_ratio, decode_image
+from src.model_store import IncompatibleModelError, build_manifest, load_bundle, save_bundle, validate_manifest
+from src.pipelines import PIPELINE_CLASSES, create_pipeline
+from src.preprocessing import ImageValidationError, banana_mask, brown_spot_ratio, decode_image, prepare_pipeline_image
 from src.types import PredictionRecord
 
 
@@ -35,6 +37,23 @@ def test_all_feature_extractors_are_deterministic(synthetic_banana):
         assert first.shape == (expected_size,)
         assert np.all(np.isfinite(first))
         assert np.allclose(first, second)
+
+
+def test_all_pipelines_use_the_identical_shared_preprocessing_contract(synthetic_banana):
+    expected_rgb, expected_mask = prepare_pipeline_image(synthetic_banana, PIPELINE_IMAGE_SIZE)
+
+    assert expected_rgb.shape == (224, 224, 3)
+    assert expected_rgb.dtype == np.uint8
+    assert expected_mask.shape == (224, 224)
+    assert expected_mask.dtype == np.uint8
+    assert set(np.unique(expected_mask)).issubset({0, 255})
+
+    for pipeline_class in PIPELINE_CLASSES.values():
+        pipeline = pipeline_class()
+        rgb, mask = pipeline.preprocess(synthetic_banana)
+        assert pipeline.image_size == PIPELINE_IMAGE_SIZE
+        assert np.array_equal(rgb, expected_rgb)
+        assert np.array_equal(mask, expected_mask)
 
 
 def test_hsv_histogram_is_normalised(synthetic_banana):
@@ -110,6 +129,20 @@ def test_manifest_validation():
     manifest["feature_version"] = "wrong"
     with pytest.raises(IncompatibleModelError):
         validate_manifest(manifest, pipeline)
+
+
+def test_loading_bundle_rejects_a_preprocessing_version_mismatch(tmp_path, synthetic_banana):
+    pipeline = create_pipeline("hsv_rf")
+    pipeline.fit([synthetic_banana] * 4, CLASS_NAMES)
+    manifest = build_manifest(pipeline, {}, {})
+    model_path = tmp_path / "hsv_rf.joblib"
+    save_bundle(pipeline, manifest, model_path)
+
+    manifest["feature_version"] = "hsv-hist-16x3-grabcut-v2"
+    model_path.with_suffix(".json").write_text(json.dumps(manifest), encoding="utf-8")
+    joblib.dump({"pipeline": pipeline, "manifest": manifest}, model_path)
+    with pytest.raises(IncompatibleModelError, match="feature version"):
+        load_bundle(model_path)
 
 
 def test_exports_are_non_empty():

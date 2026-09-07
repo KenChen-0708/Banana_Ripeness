@@ -121,6 +121,25 @@ def test_confirmed_crop_is_passed_to_every_existing_assessment_pipeline(source_i
     assert all(pipeline.images[0].shape == (60, 80, 3) for pipeline in pipelines)
 
 
+def test_selected_live_models_only_run_the_chosen_algorithms(source_image):
+    class RecordingPipeline:
+        def __init__(self, name):
+            self.display_name = name
+            self.calls = 0
+
+        def predict(self, image, filename):
+            self.calls += 1
+            return PredictionRecord(filename, "ripe", 0.9, {"ripe": 0.9}, self.display_name, 1.0)
+
+    pipelines = [RecordingPipeline(f"Pipeline {index}") for index in range(4)]
+    models = {str(index): (pipeline, {}) for index, pipeline in enumerate(pipelines)}
+    selected_models = {"1": models["1"], "3": models["3"]}
+
+    records = assess_image(selected_models, source_image, "live_camera")
+
+    assert [record.algorithm for record in records] == ["Pipeline 1", "Pipeline 3"]
+    assert [pipeline.calls for pipeline in pipelines] == [0, 1, 0, 1]
+
 def test_all_four_real_pipeline_classes_predict_after_cropping():
     from src.constants import CLASS_NAMES
     from src.pipelines import PIPELINE_CLASSES

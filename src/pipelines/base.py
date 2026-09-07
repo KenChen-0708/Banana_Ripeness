@@ -6,7 +6,8 @@ from typing import Any, Iterable
 
 import numpy as np
 
-from src.preprocessing import banana_mask, colour_masks
+from src.constants import PIPELINE_IMAGE_SIZE
+from src.preprocessing import colour_masks, prepare_pipeline_image
 from src.types import PredictionRecord
 
 
@@ -14,7 +15,7 @@ class BaseBananaPipeline(ABC):
     key: str
     display_name: str
     feature_version = "1.0"
-    image_size = (224, 224)
+    image_size = PIPELINE_IMAGE_SIZE
 
     def __init__(self) -> None:
         self.model: Any | None = None
@@ -32,6 +33,10 @@ class BaseBananaPipeline(ABC):
         if not features:
             raise ValueError("At least one image is required.")
         return np.vstack(features)
+
+    def preprocess(self, image: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Apply the common resize, denoising, and foreground-segmentation contract."""
+        return prepare_pipeline_image(image, self.image_size)
 
     def fit(self, images: Iterable[np.ndarray], labels: Iterable[str]) -> "BaseBananaPipeline":
         return self.fit_features(self.extract_many(images), labels)
@@ -69,8 +74,8 @@ class BaseBananaPipeline(ABC):
     def explain(self, image: np.ndarray) -> dict[str, Any]:
         from src.preprocessing import calibrate_fruit_geometry, determine_quality_grade
 
-        mask = banana_mask(image, self.image_size)
-        masks = colour_masks(image, mask=mask, size=self.image_size)
+        rgb, mask = self.preprocess(image)
+        masks = colour_masks(rgb, mask=mask, size=self.image_size)
         fruit_pixels = max(1, np.count_nonzero(mask))
         brown_mask = np.bitwise_or(masks["brown"], masks["dark"])
         blemish_ratio = float(np.count_nonzero(brown_mask)) / fruit_pixels

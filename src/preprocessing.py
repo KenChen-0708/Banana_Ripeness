@@ -68,6 +68,11 @@ def apply_bilateral_filter(image: np.ndarray, d: int = 9, sigma_color: float = 7
     return cv2.bilateralFilter(image, d=d, sigmaColor=sigma_color, sigmaSpace=sigma_space)
 
 
+def _denoise_for_segmentation(rgb: np.ndarray) -> np.ndarray:
+    """Apply the fixed denoising sequence used by every classifier pipeline."""
+    return cv2.bilateralFilter(cv2.medianBlur(rgb, 5), d=7, sigmaColor=45, sigmaSpace=45)
+
+
 def apply_contrast_stretching(image: np.ndarray) -> np.ndarray:
     """Linear min-max normalization/contrast stretching per channel."""
     _validate_rgb(image)
@@ -131,8 +136,23 @@ def banana_mask(image: np.ndarray, size: tuple[int, int] = (224, 224)) -> np.nda
     A zero mask is returned when no credible fruit region exists.
     """
     rgb = resize_rgb(image, size)
-    denoised = cv2.medianBlur(rgb, 5)
-    smoothed = cv2.bilateralFilter(denoised, d=7, sigmaColor=45, sigmaSpace=45)
+    return _banana_mask_from_smoothed(_denoise_for_segmentation(rgb))
+
+
+def prepare_pipeline_image(image: np.ndarray, size: tuple[int, int] = (224, 224)) -> tuple[np.ndarray, np.ndarray]:
+    """Return the common denoised RGB image and aligned banana foreground mask.
+
+    All classification pipelines must begin with this operation. Algorithm-specific
+    colour conversion, clustering, histogram, and texture processing remain part
+    of their respective feature extractors.
+    """
+    rgb = resize_rgb(image, size)
+    smoothed = _denoise_for_segmentation(rgb)
+    return smoothed, _banana_mask_from_smoothed(smoothed)
+
+
+def _banana_mask_from_smoothed(smoothed: np.ndarray) -> np.ndarray:
+    """Segment a banana from a denoised, resized RGB image."""
     lab = cv2.cvtColor(smoothed, cv2.COLOR_RGB2LAB)
     hsv = cv2.cvtColor(smoothed, cv2.COLOR_RGB2HSV)
     h, s, v = cv2.split(hsv)

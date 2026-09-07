@@ -8,7 +8,7 @@
 
 ## 👥 Task Separation Matrix
 
-Each member developed an independent, contemporary image-processing pipeline that performs feature extraction and ripeness grading. All four algorithms are unified under the common `BaseBananaPipeline` interface and evaluated side-by-side in the Streamlit prototype.
+Each member developed an independent, contemporary image-processing pipeline that performs feature extraction and ripeness grading. All four algorithms are unified under the common `BaseBananaPipeline` interface and evaluated side-by-side in the Streamlit prototype. Before algorithm-specific feature extraction, every pipeline uses the same 224×224 RGB resize, median-and-bilateral denoising, and GrabCut-refined banana foreground segmentation.
 
 | Member | Assigned Algorithm / Task | Module Directory | Report Section | Key Techniques |
 | :--- | :--- | :--- | :---: | :--- |

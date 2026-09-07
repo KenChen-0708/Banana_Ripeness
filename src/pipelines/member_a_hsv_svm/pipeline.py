@@ -19,23 +19,22 @@ from sklearn.svm import SVC
 
 from src.constants import RANDOM_STATE
 from src.pipelines.base import BaseBananaPipeline
-from src.preprocessing import banana_mask, colour_masks, resize_rgb
+from src.preprocessing import colour_masks
 
 
 class HSVSegmentationSVMPipeline(BaseBananaPipeline):
     key = "hsv_svm"
     display_name = "HSV Segmentation + Brown Spot Ratio + SVM"
-    feature_version = "hsv-ratios-statistics-grabcut-v2"
+    feature_version = "hsv-ratios-statistics-shared-preprocess-v3"
     image_size = (224, 224)
     member_name = "Ronaldo Loh Yu Fei"
     task_description = "HSV Colour Segmentation + Brown Spot Ratio + Support Vector Machine"
     report_section = "Section 2.4"
 
     def extract_features(self, image: np.ndarray) -> np.ndarray:
-        rgb = resize_rgb(image, self.image_size)
+        rgb, mask = self.preprocess(image)
         hsv = cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV)
-        mask = banana_mask(image, self.image_size)
-        masks = colour_masks(image, mask=mask, size=self.image_size)
+        masks = colour_masks(rgb, mask=mask, size=self.image_size)
         fruit = mask > 0
         count = max(1, int(np.count_nonzero(fruit)))
         green_ratio = float(np.count_nonzero(masks["green"])) / count
@@ -69,7 +68,8 @@ class HSVSegmentationSVMPipeline(BaseBananaPipeline):
     def explain(self, image: np.ndarray) -> dict[str, np.ndarray | float]:
         explanation = super().explain(image)
         mask = explanation["fruit_mask"]
-        masks = colour_masks(image, mask=mask, size=self.image_size)
+        rgb, _ = self.preprocess(image)
+        masks = colour_masks(rgb, mask=mask, size=self.image_size)
         fruit_pixels = max(1, int(np.count_nonzero(mask)))
         explanation["brown_spot_ratio"] = float(np.count_nonzero(masks["brown"])) / fruit_pixels
         explanation["dark_ratio"] = float(np.count_nonzero(masks["dark"])) / fruit_pixels

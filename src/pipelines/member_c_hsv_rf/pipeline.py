@@ -17,27 +17,24 @@ from sklearn.ensemble import RandomForestClassifier
 
 from src.constants import RANDOM_STATE
 from src.pipelines.base import BaseBananaPipeline
-from src.preprocessing import resize_rgb
 
 
 class HSVHistogramRandomForestPipeline(BaseBananaPipeline):
     key = "hsv_rf"
     display_name = "HSV Histogram + Random Forest"
-    feature_version = "hsv-hist-16x3-grabcut-v2"
+    feature_version = "hsv-hist-16x3-shared-preprocess-v3"
     image_size = (224, 224)
     member_name = "Chen Kai Jian"
     task_description = "HSV Colour Histogram + Random Forest Classifier"
     report_section = "Section 2.1"
 
     def extract_features(self, image: np.ndarray) -> np.ndarray:
-        rgb = resize_rgb(image, self.image_size)
+        rgb, mask = self.preprocess(image)
         hsv = cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV)
-        histograms = [
-            cv2.calcHist([hsv], [0], None, [16], [0, 180]),
-            cv2.calcHist([hsv], [1], None, [16], [0, 256]),
-            cv2.calcHist([hsv], [2], None, [16], [0, 256]),
-        ]
-        features = np.concatenate(histograms).astype(np.float32).ravel()
+        pixels = hsv[mask > 0] if np.any(mask) else hsv.reshape(-1, 3)
+        ranges = ((0, 180), (0, 256), (0, 256))
+        histograms = [np.histogram(pixels[:, channel], bins=16, range=value_range)[0] for channel, value_range in enumerate(ranges)]
+        features = np.concatenate(histograms).astype(np.float32)
         total = float(features.sum())
         return features / total if total > 0 else features
 
